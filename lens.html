@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Modo cocina</title>
+<style>
+  :root { --bg: #0a0b10; --surface: #13151d; --surface-2: #1b1e29; --line: #262a38; --text: #eef0f8; --muted: #9a9db5; --accent: #7c6cff; --accent-2: #2fd4c7; --warn: #ffb547;
+    --font: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Code", Consolas, monospace; }
+  * { box-sizing: border-box; margin: 0; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; animation: in .35s ease-out; }
+  @keyframes in { from { opacity: 0; transform: scale(.985); } }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .app { height: 100%; display: grid; grid-template-columns: minmax(300px, 380px) 1fr; }
+  aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--line); }
+  .hero { position: relative; height: 190px; flex: none; background: var(--surface-2) center/cover; }
+  .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 35%, var(--surface)); }
+  .head { padding: 0 22px 14px; margin-top: -42px; position: relative; z-index: 1; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 99px; background: #2fd4c71f; color: var(--accent-2); font-size: 12px; font-weight: 600; }
+  h1 { margin-top: 10px; font-size: 22px; line-height: 1.25; font-weight: 700; }
+  .meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+  .serv { display: flex; align-items: center; gap: 10px; margin: 4px 22px 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); font-size: 14px; }
+  .serv span { flex: 1; }
+  .serv button { width: 32px; height: 32px; border-radius: 9px; background: var(--bg); font-size: 18px; font-weight: 600; }
+  .serv b { min-width: 28px; text-align: center; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .ing { flex: 1; overflow-y: auto; padding: 4px 14px 20px; }
+  .ing h2 { padding: 8px 8px 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .ing label { display: flex; gap: 12px; align-items: flex-start; padding: 9px 8px; border-radius: 9px; font-size: 15px; line-height: 1.45; cursor: pointer; }
+  .ing label:hover { background: var(--surface-2); }
+  .ing input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent-2); flex: none; }
+  .ing input:checked + span { color: var(--muted); text-decoration: line-through; }
+  .ing q { quotes: none; color: var(--accent-2); font-weight: 650; }
+
+  main { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 26px clamp(20px, 5vw, 64px) 22px; }
+  .top { display: flex; align-items: center; gap: 12px; }
+  .count { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .dots { flex: 1; display: flex; gap: 5px; }
+  .dots i { flex: 1; max-width: 46px; height: 4px; border-radius: 2px; background: var(--line); transition: background .2s; }
+  .dots i.done { background: var(--accent); }
+  .dots i.now { background: var(--accent-2); }
+  .close { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 10px; background: var(--surface-2); color: var(--muted); font-size: 13px; }
+  .close:hover { color: var(--text); }
+  .step { flex: 1; display: flex; flex-direction: column; justify-content: center; max-width: 900px; min-height: 0; }
+  .num { color: var(--accent-2); font-size: 15px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .txt { margin-top: 14px; font-size: clamp(22px, 2.6vw, 34px); line-height: 1.45; font-weight: 500; overflow-y: auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .chip { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 12px; background: #ffb5471f; color: var(--warn); font-weight: 600; font-size: 15px; }
+  .chip:hover { background: #ffb54733; }
+  .nav { display: flex; gap: 12px; }
+  .nav button { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 24px; border-radius: 14px; background: var(--surface-2); font-size: 16px; font-weight: 600; }
+  .nav button:disabled { opacity: .35; cursor: default; }
+  .nav .next { margin-left: auto; background: #5b4bdb; color: #fff; }
+  .hint { margin-top: 12px; color: var(--muted); font-size: 12.5px; }
+  .tm { position: absolute; right: clamp(20px, 5vw, 64px); top: 76px; display: grid; gap: 8px; }
+  .tmr { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 30px #0008; }
+  .tmr b { font: 600 22px var(--mono); font-variant-numeric: tabular-nums; }
+  .tmr small { display: block; color: var(--muted); font-size: 11.5px; max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .tmr.ring { border-color: var(--warn); background: #2a2010; }
+  .tmr button { width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
+  .done-card { text-align: center; }
+  .done-card .txt { font-size: 38px; font-weight: 700; }
+  @media (max-width: 760px) { .app { grid-template-columns: 1fr; } aside { display: none; } }
+  @media (prefers-reduced-motion: reduce) { body { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="hero" id="hero"></div>
+      <div class="head">
+        <span class="tag"><svg viewBox="0 0 24 24"><path d="M6 13.9A4 4 0 1 1 9 7a5 5 0 0 1 6 0 4 4 0 1 1 3 6.9V20H6z"/><path d="M6 17h12"/></svg>Lente · Modo cocina</span>
+        <h1 id="title"></h1>
+        <div class="meta" id="meta"></div>
+      </div>
+      <div class="serv" id="serv" hidden><span>Porciones</span><button id="less" aria-label="Menos porciones">−</button><b id="srv"></b><button id="more" aria-label="Más porciones">+</button></div>
+      <div class="ing"><h2>Ingredientes</h2><div id="ings"></div></div>
+    </aside>
+    <main>
+      <div class="top">
+        <span class="count" id="count"></span>
+        <div class="dots" id="dots"></div>
+        <button class="close" id="close" title="Volver a la página (Esc)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Volver a la página</button>
+      </div>
+      <div class="tm" id="timers"></div>
+      <div class="step" id="step"></div>
+      <div class="nav"><button id="prev"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Anterior</button><button class="next" id="next">Siguiente<svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button></div>
+      <p class="hint">Flechas o barra espaciadora para avanzar · la pantalla no se apagará mientras cocinas</p>
+    </main>
+  </div>
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let R = null, i = 0, base = 0, srv = 0;
+
+  // ISO 8601 durations (PT1H30M) -> "1 h 30 min"
+  const iso = d => { const m = /P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/.exec(d || ''); if (!m) return ''; const h = (+m[1] || 0) * 24 + (+m[2] || 0), mi = +m[3] || 0; return [h && h + ' h', mi && mi + ' min'].filter(Boolean).join(' '); };
+  // Quantities: "1 1/2", "3/4", "250", "0,5", "½" -> number; scaled back to a friendly string.
+  const FR = { '½': .5, '¼': .25, '¾': .75, '⅓': 1 / 3, '⅔': 2 / 3 };
+  const QTY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:[.,]\d+)?|[½¼¾⅓⅔])/;
+  const toNum = s => s in FR ? FR[s] : s.includes('/') ? s.split(/\s+/).reduce((a, p) => a + (p.includes('/') ? p.split('/')[0] / p.split('/')[1] : +p), 0) : +s.replace(',', '.');
+  const fmt = n => { const w = Math.floor(n), f = n - w, near = [[0, ''], [.25, '¼'], [1 / 3, '⅓'], [.5, '½'], [2 / 3, '⅔'], [.75, '¾'], [1, '']].reduce((a, b) => Math.abs(b[0] - f) < Math.abs(a[0] - f) ? b : a);
+    if (n >= 10 || Math.abs(near[0] - f) > .06) return (Math.round(n * 10) / 10).toLocaleString('es');
+    const whole = w + (near[0] === 1 ? 1 : 0); return (whole ? whole : '') + (near[1] ? (whole ? ' ' : '') + near[1] : '') || '0'; };
+
+  function drawIngredients() {
+    const k = base && srv ? srv / base : 1;
+    $('ings').innerHTML = R.ingredients.map((t, n) => {
+      const m = QTY.exec(t);
+      const shown = m && k !== 1 ? `<q>${fmt(toNum(m[1]) * k)}</q>${esc(t.slice(m[1].length))}` : m ? `<q>${esc(m[1])}</q>${esc(t.slice(m[1].length))}` : esc(t);
+      return `<label><input type="checkbox" data-n="${n}"><span>${shown}</span></label>`;
+    }).join('');
+  }
+
+  // Durations inside a step become one-tap timers.
+  const TIME = /(\d+(?:[.,]\d+)?)(?:\s*(?:a|-)\s*(\d+))?\s*(horas?|h\b|minutos?|min\b|segundos?|seg\b)/gi;
+  const timersIn = text => [...text.matchAll(TIME)].map(m => { const n = +(m[2] || m[1]).replace(',', '.'), u = m[3][0].toLowerCase(); return { sec: Math.round(n * (u === 'h' ? 3600 : u === 's' ? 1 : 60)), label: m[0] }; }).filter(t => t.sec > 0 && t.sec <= 86400);
+
+  function drawStep() {
+    const n = R.steps.length, done = i >= n;
+    $('count').textContent = done ? '¡Listo!' : `Paso ${i + 1} de ${n}`;
+    $('dots').innerHTML = R.steps.map((_, k) => `<i class="${k < i ? 'done' : k === i ? 'now' : ''}"></i>`).join('');
+    $('prev').disabled = i === 0;
+    $('next').innerHTML = done ? 'Volver a la página' : i === n - 1 ? 'Terminar' : 'Siguiente<svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>';
+    if (done) { $('step').innerHTML = '<div class="done-card"><p class="num">Receta terminada</p><p class="txt">¡Buen provecho!</p></div>'; return; }
+    const t = R.steps[i], tms = timersIn(t);
+    $('step').innerHTML = `<p class="num">Paso ${i + 1}</p><p class="txt">${esc(t)}</p>` +
+      (tms.length ? `<div class="chips">${tms.map(x => `<button class="chip" data-sec="${x.sec}" data-label="${esc('Paso ' + (i + 1) + ' · ' + x.label)}"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>Temporizador ${esc(x.label)}</button>`).join('')}</div>` : '');
+  }
+
+  // Timers keep running while you move between steps; a beep and a highlighted card when they finish.
+  const timers = [];
+  function beep() { try { const a = new AudioContext(); [0, .35, .7].forEach(t => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; o.connect(g); g.connect(a.destination); g.gain.setValueAtTime(.25, a.currentTime + t); g.gain.exponentialRampToValueAtTime(.001, a.currentTime + t + .3); o.start(a.currentTime + t); o.stop(a.currentTime + t + .3); }); } catch (e) {} }
+  function drawTimers() {
+    const now = Date.now();
+    $('timers').innerHTML = timers.map((t, k) => { const left = Math.max(0, Math.round((t.end - now) / 1000));
+      return `<div class="tmr${left ? '' : ' ring'}"><div><b>${left ? Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') : '¡Listo!'}</b><small>${esc(t.label)}</small></div><button data-k="${k}" aria-label="Quitar temporizador">✕</button></div>`; }).join('');
+  }
+  setInterval(() => { timers.forEach(t => { if (!t.rang && t.end <= Date.now()) { t.rang = true; beep(); } }); if (timers.length) drawTimers(); }, 500);
+  $('step').onclick = e => { const c = e.target.closest('.chip'); if (c) { timers.push({ end: Date.now() + c.dataset.sec * 1000, label: c.dataset.label }); drawTimers(); } };
+  $('timers').onclick = e => { const b = e.target.closest('button'); if (b) { timers.splice(+b.dataset.k, 1); drawTimers(); } };
+
+  const go = d => { i = Math.max(0, Math.min(R.steps.length, i + d)); drawStep(); };
+  $('prev').onclick = () => go(-1);
+  $('next').onclick = () => i >= R.steps.length ? nova.cmd('lensClose') : go(1);
+  $('close').onclick = () => nova.cmd('lensClose');
+  $('less').onclick = () => { if (srv > 1) { srv--; $('srv').textContent = srv; drawIngredients(); } };
+  $('more').onclick = () => { srv++; $('srv').textContent = srv; drawIngredients(); };
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape') nova.cmd('lensClose');
+    else if (e.key === 'ArrowRight' || (e.key === ' ' && e.target === document.body)) { e.preventDefault(); $('next').click(); }
+    else if (e.key === 'ArrowLeft') go(-1);
+  });
+
+  nova.on('lens-data', ({ data }) => {
+    R = data; i = 0;
+    $('hero').style.backgroundImage = R.image ? `url("${R.image.replace(/"/g, '%22')}")` : '';
+    $('title').textContent = R.title;
+    const time = iso(R.time);
+    $('meta').innerHTML = [time && `${esc(time)}`, R.yield && `${esc(R.yield)}`, `${R.steps.length} pasos`].filter(Boolean).join('<span>·</span>');
+    base = srv = parseInt(R.yield) || 0;
+    $('serv').hidden = !base;
+    $('srv').textContent = srv;
+    drawIngredients(); drawStep(); drawTimers();
+    navigator.wakeLock?.request('screen').catch(() => {}); // keep the screen on while cooking
+  });
+</script>
+</body>
+</html>

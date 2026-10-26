@@ -70,6 +70,52 @@ function ensureAiView() {
   }
   return aiView;
 }
+
+// Recipe lens: most recipe sites publish schema.org Recipe JSON-LD, so cooking mode needs no AI and opens instantly.
+const LENS_DETECT = `(() => {
+  const all = [];
+  const walk = o => { if (!o || typeof o !== 'object') return; if (Array.isArray(o)) return o.forEach(walk); all.push(o); if (o['@graph']) walk(o['@graph']); };
+  for (const s of document.querySelectorAll('script[type="application/ld+json"]')) { try { walk(JSON.parse(s.textContent)); } catch (e) {} }
+  const r = all.find(o => [].concat(o['@type'] || []).includes('Recipe'));
+  if (!r) return null;
+  const txt = v => String(typeof v === 'string' ? v : (v && (v.text || v.name)) || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+  const steps = [];
+  const walkS = s => {
+    if (!s) return;
+    if (Array.isArray(s)) return s.forEach(walkS);
+    if (typeof s === 'object' && s.itemListElement) return walkS(s.itemListElement);
+    if (typeof s === 'string') return s.split(/\\n+/).map(txt).filter(Boolean).forEach(t => steps.push(t));
+    const t = txt(s); if (t) steps.push(t);
+  };
+  walkS(r.recipeInstructions);
+  const img = [].concat(r.image || [])[0];
+  const ingredients = [].concat(r.recipeIngredient || []).map(txt).filter(Boolean);
+  if (!ingredients.length && !steps.length) return null;
+  return { title: txt(r.name) || document.title, image: typeof img === 'string' ? img : img && img.url || '',
+    yield: txt([].concat(r.recipeYield || [])[0]), time: r.totalTime || r.cookTime || r.prepTime || '', ingredients, steps, url: location.href };
+})()`;
+
+function openLens() {
+  const t = tabs.get(active);
+  if (!t?.lens) return toast('Esta página no tiene un lente disponible');
+  const send = () => lensView.webContents.send('lens-data', { kind: 'recipe', data: t.lens });
+  if (!lensView) {
+    lensView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js') } });
+    lensView.setBackgroundColor('#0a0b10');
+    keys(lensView.webContents);
+    lensView.webContents.loadFile('lens.html');
+    lensView.webContents.once('did-finish-load', send);
+  } else send();
+  lensOpen = true;
+  render();
+  lensView.webContents.focus();
+}
+function closeLens() {
+  if (!lensOpen) return;
+  lensOpen = false;
+  render();
+  tabs.get(active)?.view?.webContents.focus();
+}
 const isYouTube = u => { try { return /(^|\.)youtube\.com$/.test(new URL(u).hostname); } catch { return false; } };
 const closed = []; // urls of closed tabs, for Ctrl+Shift+T
 // id -> { view, shown, lastSeen, favicon, errors } while awake, { url, title, favicon } while sleeping
@@ -112,7 +158,7 @@ function state() {
   const media = m && { id: m[0], title: m[1].view.webContents.getTitle(), playing: m[1].media === 'playing', yt: isYouTube(m[1].view.webContents.getURL()) };
   ui.webContents.send('state', { tabs: list, active, split, blocked, canBack: !!nav?.canGoBack(), canFwd: !!nav?.canGoForward(),
     youtube: isYouTube(curUrl), yt: settings, ytLabels: YT_LABELS, media, aiOpen,
-    bookmarked: bookmarks.some(b => b.url === curUrl) });
+    bookmarked: bookmarks.some(b => b.url === curUrl), lens: !!cur?.lens, lensOpen });
   aiView?.webContents.send('ai-page', { url: curUrl === HOME ? '' : curUrl, title: cur ? info(cur).title : '', video: isYouTube(curUrl) && /[?&]v=/.test(curUrl) });
 }
 
@@ -140,6 +186,7 @@ function layout() {
   ui.setBounds({ x: 0, y: 0, width: full, height: overlay ? H : top });
   const W = aiOpen ? full - AI_W : full;
   if (aiOpen) aiView.setBounds({ x: W, y: top, width: AI_W, height: h });
+  if (lensOpen) lensView.setBounds({ x: 0, y: top, width: W, height: h }); // covers the page it transforms
   const a = tabs.get(active)?.view, b = split != null && tabs.get(split)?.view;
   if (b) {
     const half = Math.floor(W / 2);
@@ -156,6 +203,7 @@ function render() {
     win.contentView.removeChildView(t.view); t.shown = false; t.lastSeen = Date.now();
   }
   for (const id of want) { const t = tabs.get(id); if (!t.shown) { win.contentView.addChildView(t.view); t.shown = true; } }
+  if (lensView) lensOpen ? win.contentView.addChildView(lensView) : win.contentView.removeChildView(lensView);
   if (aiView) aiOpen ? win.contentView.addChildView(aiView) : win.contentView.removeChildView(aiView);
   if (overlay) win.contentView.addChildView(ui); // keep the palette above the pages
   layout();
@@ -586,6 +634,7 @@ function keys(target) {
       : c && k === '-' ? () => cmd.zoom(-1)
       : c && k === '0' ? () => cmd.zoom(0)
       : c && k === '\\' ? cmd.split
+      : c && !s && k === 'e' ? cmd.lens
       : c && !s && k === 'p' ? cmd.print
       : c && s && k === 'n' ? cmd.incognito
       : c && s && k === 'y' ? cmd.dlPanel
@@ -619,12 +668,16 @@ function wake(id, url) {
     if (u.startsWith(NOVA_CMD)) { e.preventDefault(); if ([HOME, WRAPPED].includes(wc.getURL())) novaLink(u); return; }
     const c = clean(u); if (c !== u) { e.preventDefault(); wc.loadURL(c); }
   });
-  wc.on('did-finish-load', () => { if ([HOME, WRAPPED].includes(wc.getURL())) refreshHomes(); });
+  wc.on('did-finish-load', async () => {
+    if ([HOME, WRAPPED].includes(wc.getURL())) refreshHomes();
+    t.lens = await wc.executeJavaScript(LENS_DETECT).catch(() => null);
+    state();
+  });
   wc.on('audio-state-changed', state);
   wc.on('media-started-playing', () => { t.media = 'playing'; t.mediaAt = Date.now(); state(); });
   wc.on('media-paused', () => { if (t.media) { t.media = 'paused'; state(); } });
   wc.on('page-favicon-updated', (_e, f) => { t.favicon = f[0]; state(); });
-  wc.on('did-navigate', (_e, u) => { t.favicon = ''; t.errors = []; t.net = []; t.media = null; remember(u, ''); state(); });
+  wc.on('did-navigate', (_e, u) => { t.favicon = ''; t.errors = []; t.net = []; t.media = null; t.lens = null; remember(u, ''); state(); });
   wc.on('did-navigate-in-page', (_e, u, main) => { if (!main) return; remember(u, wc.getTitle()); youtube(wc, u); state(); });
   wc.on('dom-ready', () => { const u = wc.getURL(); if (isYouTube(u)) { wc.insertCSS(YT_CSS); youtube(wc, u); } });
   wc.on('page-title-updated', (_e, title) => { const h = history.find(h => h.url === wc.getURL()); if (h) h.title = title; state(); });
@@ -673,6 +726,7 @@ function select(id) {
     prev.view.webContents.executeJavaScript(PIP_ON, true).catch(() => {});
   if (id === split) split = active; // clicking the right pane's tab swaps sides
   active = id;
+  lensOpen = false; // a lens belongs to the page it transformed
   tabs.get(id).view?.webContents.executeJavaScript(PIP_OFF).catch(() => {});
   render();
 }

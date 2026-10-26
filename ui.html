@@ -51,6 +51,9 @@
   .pbtn { width: auto; height: 30px; padding: 0 14px; border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 13px; }
   .pbtn.primary { background: #5b4bdb; color: #fff; }
   .pbtn.primary:hover:not(:disabled) { background: #6a5ae6; color: #fff; }
+  #lensbtn { width: auto; gap: 7px; padding: 0 12px; display: flex; background: #2fd4c71c; color: var(--accent-2); font-weight: 600; font-size: 12.5px; }
+  #lensbtn:hover { background: #2fd4c733; color: var(--accent-2); }
+  #lensbtn.on { background: var(--accent-2); color: #06201d; }
   #dl { position: relative; }
   #dl.busy { color: var(--accent-2); background: conic-gradient(var(--accent-2) var(--p, 0%), transparent 0) border-box; }
   #dl.busy::before { content: ""; position: absolute; inset: 2px; border-radius: 6px; background: var(--surface); }
@@ -169,6 +172,7 @@
     </div>
     <button id="errs" hidden title="Copiar paquete de depuración para la IA (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span id="errn">0</span></button>
     <button id="yt" hidden title="Opciones de YouTube" aria-label="Opciones de YouTube"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z"/></svg></button>
+    <button id="lensbtn" hidden title="Transformar esta página (Ctrl+E)"><svg viewBox="0 0 24 24"><path d="M6 13.9A4 4 0 1 1 9 7a5 5 0 0 1 6 0 4 4 0 1 1 3 6.9V20H6z"/><path d="M6 17h12"/></svg><span>Modo cocina</span></button>
     <button id="dl" hidden title="Descargas (Ctrl+Shift+Y)" aria-label="Descargas"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
     <button id="ai" title="Nova IA: resume y pregunta (Ctrl+J)" aria-label="Nova IA"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg></button>
     <button id="pick" title="Señalar elemento a la IA (Ctrl+Shift+X)" aria-label="Señalar elemento a la IA"><svg viewBox="0 0 24 24"><path d="M3 3l7.1 17 2.5-7.4L20 10.1z"/><path d="M13 13l6 6"/></svg></button>
@@ -424,6 +428,7 @@
     $('dlfolder').focus();
   });
   $('dl').onclick = () => nova.cmd('dlPanel');
+  $('lensbtn').onclick = () => nova.cmd('lens');
   $('dlpop').onmousedown = e => { if (e.target === $('dlpop')) closeDl(); };
   $('dlpop').onkeydown = e => { if (e.key === 'Escape') closeDl(); };
   $('dlfolder').onclick = () => { nova.cmd('dlFolder'); closeDl(); };
@@ -453,6 +458,8 @@
     $('fwd').disabled = !s.canFwd;
     $('split').classList.toggle('on', s.split != null);
     $('yt').hidden = !s.youtube;
+    $('lensbtn').hidden = !s.lens;
+    $('lensbtn').classList.toggle('on', !!s.lensOpen);
     $('ai').classList.toggle('on', !!s.aiOpen);
     $('mini').hidden = !s.media;
     if (s.media) {
