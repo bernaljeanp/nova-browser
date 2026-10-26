@@ -44,6 +44,14 @@
   #mtitle:hover { color: var(--text); }
   #new { -webkit-app-region: no-drag; width: 30px; height: 30px; margin: 0 0 1px 4px; flex: none; }
 
+  #favbar { height: 32px; display: flex; align-items: center; gap: 2px; padding: 0 8px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  #favs { flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; }
+  .bm { display: flex; align-items: center; gap: 7px; width: auto; max-width: 180px; height: 26px; padding: 0 9px 0 7px; flex: none; border-radius: 7px; color: #c3c6db; font-size: 12.5px; }
+  .bm img, .bm i { width: 16px; height: 16px; flex: none; border-radius: 4px; }
+  .bm img { padding: 1px; background: #f3f4f8; } /* dark logos (GitHub) stay visible on the dark bar */
+  .bm i { display: grid; place-items: center; font: 700 9px var(--font); color: #fff; font-style: normal; }
+  .bm span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #favmore { width: 28px; height: 26px; font-size: 15px; flex: none; }
   #bar { position: relative; height: 46px; display: flex; align-items: center; gap: 4px; padding: 0 10px; background: var(--surface); border-bottom: 1px solid var(--line); }
   button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; transition: background .15s, color .15s; font: inherit; }
   button:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
@@ -142,6 +150,8 @@
     <div id="toast" role="status"></div>
   </div>
 
+  <nav id="favbar" hidden aria-label="Barra de favoritos"><div id="favs"></div><button id="favmore" hidden title="Más favoritos" aria-label="Más favoritos">»</button></nav>
+
   <div id="pal" hidden>
     <div class="box" role="dialog" aria-label="Paleta de comandos">
       <label class="field">
@@ -216,6 +226,7 @@
     ['Mi Nova Wrapped', 'tiempo recuperado este mes', 'wrapped'],
     ['Video flotante automático', () => S.yt?.autoPip ? 'activado' : 'desactivado', () => nova.cmd('yt', 'autoPip')],
     ['Guardar en favoritos', 'Ctrl+D', 'bookmark'],
+    ['Mostrar u ocultar barra de favoritos', 'Ctrl+Shift+B', () => nova.cmd('yt', 'favBar')],
     ['Importar desde Chrome', 'favoritos e historial', () => nova.cmd('import', 'Chrome')],
     ['Importar desde Edge', 'favoritos e historial', () => nova.cmd('import', 'Edge')],
     ['Importar desde Brave', 'favoritos e historial', () => nova.cmd('import', 'Brave')],
@@ -276,6 +287,35 @@
   $('pal').onmousedown = e => { if (e.target === $('pal')) closePal(); };
   nova.on('palette', d => { P = d; $('pal').hidden = false; q.value = ''; build(); q.focus(); });
   nova.on('servers', s => { P.servers = s; if (!$('pal').hidden) { const keep = sel; build(); sel = Math.min(keep, items.length - 1); draw(); } });
+
+  // Bookmarks bar: click opens here, middle click in a new tab, right click for options; what doesn't fit goes behind ».
+  let FAVS = [];
+  const tintOf = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 55% 45%)`; };
+  const favHost = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+  function layoutFavs() {
+    const box = $('favs'), items = [...box.children];
+    items.forEach(el => el.hidden = false);
+    const limit = box.getBoundingClientRect().right;
+    const hidden = items.filter(el => el.getBoundingClientRect().right > limit);
+    hidden.forEach(el => el.hidden = true);
+    $('favmore').hidden = !hidden.length;
+    $('favmore').dataset.urls = JSON.stringify(hidden.map(el => el.dataset.url));
+  }
+  nova.on('favs', ({ show, list }) => {
+    FAVS = list;
+    $('favbar').hidden = !show;
+    $('favs').innerHTML = list.map(b => {
+      const name = b.title && b.title !== b.url ? b.title : favHost(b.url);
+      const icon = b.icon ? `<img src="${esc(b.icon)}" alt="">` : `<i style="background:${tintOf(favHost(b.url))}">${esc((name[0] || '?').toUpperCase())}</i>`;
+      return `<button class="bm" data-url="${esc(b.url)}" title="${esc(name)}\n${esc(b.url)}">${icon}<span>${esc(name)}</span></button>`;
+    }).join('');
+    requestAnimationFrame(layoutFavs);
+  });
+  addEventListener('resize', () => !$('favbar').hidden && layoutFavs());
+  $('favs').onclick = e => { const f = e.target.closest('.bm'); if (f) nova.cmd('favOpen', { url: f.dataset.url, tab: e.ctrlKey }); };
+  $('favs').onauxclick = e => { const f = e.target.closest('.bm'); if (f && e.button === 1) nova.cmd('favOpen', { url: f.dataset.url, tab: true }); };
+  $('favs').oncontextmenu = e => { const f = e.target.closest('.bm'); if (f) { e.preventDefault(); nova.cmd('favMenu', { url: f.dataset.url, x: e.clientX, y: e.clientY }); } };
+  $('favmore').onclick = () => { const r = $('favmore').getBoundingClientRect(); nova.cmd('favMore', { urls: JSON.parse($('favmore').dataset.urls || '[]'), x: r.left, y: r.bottom }); };
 
   nova.on('blocked', n => $('count').textContent = fmt(n));
   nova.on('focus-url', () => { findMode(false); url.focus(); });

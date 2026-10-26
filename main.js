@@ -33,9 +33,9 @@ let history = [], servers = [], bookmarks = []; // bookmarks: [{ url, title, fav
 const HISTORY_MAX = 5000;
 const saveJSON = (name, data) => fs.writeFile(path.join(USER, name), JSON.stringify(data)).catch(() => {});
 // YouTube pack; persisted in settings.json
-let settings = { ytQuality: true, ytMusic: false, ytNoShorts: true, ytFocus: false, ytDislikes: true, autoPip: true };
+let settings = { ytQuality: true, ytMusic: false, ytNoShorts: true, ytFocus: false, ytDislikes: true, autoPip: true, favBar: true };
 const YT_LABELS = { ytQuality: 'Calidad máxima automática', ytMusic: 'Modo música (solo audio)', ytNoShorts: 'Ocultar Shorts', ytFocus: 'Modo sin distracciones', ytDislikes: 'Mostrar «No me gusta»' };
-const LABELS = { ...YT_LABELS, autoPip: 'Video flotante automático' };
+const LABELS = { ...YT_LABELS, autoPip: 'Video flotante automático', favBar: 'Barra de favoritos' };
 
 // Nova Wrapped: per-month counters, persisted in stats.json as { "2026-10": {...} }.
 let stats = {};
@@ -100,17 +100,26 @@ function state() {
   aiView?.webContents.send('ai-page', { url: curUrl === HOME ? '' : curUrl, title: cur ? info(cur).title : '', video: isYouTube(curUrl) && /[?&]v=/.test(curUrl) });
 }
 
+// Bookmarks bar, like Chrome's: shown under the toolbar when there are favorites (Ctrl+Shift+B toggles).
+const FAVBAR_H = 32;
+const showFavBar = () => settings.favBar && bookmarks.length > 0;
+function sendFavs() {
+  const list = bookmarks.slice(0, 60).map(b => ({ url: b.url, title: b.title, icon: icons[siteHost(b.url)] || (/^https:/.test(b.favicon || '') ? b.favicon : '') }));
+  ui?.webContents.send('favs', { show: showFavBar(), list });
+}
+
 function layout() {
-  const { width: full, height: H } = win.getContentBounds(), h = H - UI_H;
-  ui.setBounds({ x: 0, y: 0, width: full, height: overlay ? H : UI_H });
+  const top = UI_H + (showFavBar() ? FAVBAR_H : 0);
+  const { width: full, height: H } = win.getContentBounds(), h = H - top;
+  ui.setBounds({ x: 0, y: 0, width: full, height: overlay ? H : top });
   const W = aiOpen ? full - AI_W : full;
-  if (aiOpen) aiView.setBounds({ x: W, y: UI_H, width: AI_W, height: h });
+  if (aiOpen) aiView.setBounds({ x: W, y: top, width: AI_W, height: h });
   const a = tabs.get(active)?.view, b = split != null && tabs.get(split)?.view;
   if (b) {
     const half = Math.floor(W / 2);
-    a?.setBounds({ x: 0, y: UI_H, width: half - 1, height: h });
-    b.setBounds({ x: half + 1, y: UI_H, width: W - half - 1, height: h });
-  } else a?.setBounds({ x: 0, y: UI_H, width: W, height: h });
+    a?.setBounds({ x: 0, y: top, width: half - 1, height: h });
+    b.setBounds({ x: half + 1, y: top, width: W - half - 1, height: h });
+  } else a?.setBounds({ x: 0, y: top, width: W, height: h });
 }
 
 // Attach exactly the visible views (active, plus split pane), waking sleeping tabs as needed.
@@ -349,7 +358,7 @@ function refreshHomes() {
     if (u === HOME) w.executeJavaScript(`window.renderHome?.(${JSON.stringify({ sites, mine, icons: homeIcons, stats: statsSummary() })})`).catch(() => {});
     if (u === WRAPPED) w.executeJavaScript(`window.renderWrapped?.(${JSON.stringify(statsSummary())})`).catch(() => {});
   }
-  fetchIcons(sites).then(got => got && refreshHomes());
+  fetchIcons([...sites, ...bookmarks.slice(0, 60)]).then(got => { if (got) { refreshHomes(); sendFavs(); } });
 }
 
 // Renders the Wrapped card at Instagram portrait size (1080x1350) in a hidden window.
@@ -383,7 +392,8 @@ function setBookmarks(list) {
   bookmarks = list;
   saveJSON('bookmarks.json', bookmarks);
   refreshHomes();
-  state();
+  sendFavs();
+  render(); // the bar may appear or disappear, which moves the pages
 }
 
 // Chromium-family browsers share one profile format: Bookmarks is JSON, History is SQLite.
@@ -548,6 +558,7 @@ function keys(target) {
       : c && k === '0' ? () => cmd.zoom(0)
       : c && k === '\\' ? cmd.split
       : c && !s && k === 'd' ? cmd.bookmark
+      : c && s && k === 'b' ? () => cmd.yt('favBar')
       : c && !s && k === 'j' ? cmd.ai
       : c && s && k === 'm' ? () => cmd.mute()
       : c && s && k === 's' ? cmd.shot
@@ -748,9 +759,21 @@ const cmd = {
     settings[key] = !settings[key];
     saveJSON('settings.json', settings);
     applyYouTubeAll();
-    state();
+    if (key === 'favBar') { sendFavs(); render(); } else state();
     toast(`${LABELS[key]}: ${settings[key] ? 'activado' : 'desactivado'}`);
   },
+  // Bookmarks bar
+  favOpen: ({ url, tab }) => /^https?:/.test(url) && (tab ? newTab(url, false) : wc().loadURL(url)),
+  favMenu: ({ url, x, y }) => Menu.buildFromTemplate([
+    { label: 'Abrir', click: () => wc().loadURL(url) },
+    { label: 'Abrir en pestaña nueva', click: () => newTab(url) },
+    { label: 'Abrir en vista dividida', click: () => { split = newTab(url, false); render(); } },
+    { type: 'separator' },
+    { label: 'Quitar de favoritos', click: () => setBookmarks(bookmarks.filter(b => b.url !== url)) },
+    { label: 'Ocultar barra de favoritos', click: () => cmd.yt('favBar') },
+  ]).popup({ window: win, x: Math.round(x), y: Math.round(y) }),
+  favMore: ({ urls, x, y }) => Menu.buildFromTemplate(bookmarks.filter(b => urls.includes(b.url))
+    .map(b => ({ label: (b.title || b.url).slice(0, 60), click: () => wc().loadURL(b.url) }))).popup({ window: win, x: Math.round(x), y: Math.round(y) }),
   // Mini player in the tab strip
   mediaToggle: id => tabs.get(id)?.view?.webContents.executeJavaScript(
     `(() => { const m = [...document.querySelectorAll('video, audio')].find(m => m.currentSrc); if (m) m.paused ? m.play() : m.pause(); })()`, true).catch(() => {}),
@@ -825,6 +848,7 @@ async function restore() {
   try { bookmarks = JSON.parse(await fs.readFile(path.join(USER, 'bookmarks.json'), 'utf8')); } catch {}
   try { stats = JSON.parse(await fs.readFile(path.join(USER, 'stats.json'), 'utf8')); } catch {}
   try { icons = JSON.parse(await fs.readFile(path.join(USER, 'icons.json'), 'utf8')); for (const h in icons) if (!icons[h]) delete icons[h]; } catch {}
+  sendFavs(); // after icons, so the bar shows logos right away
   const launchUrl = urlArg(process.argv);
   if (launchUrl) { await restoreSession(); return newTab(clean(launchUrl)); }
   if (await restoreSession()) return;
