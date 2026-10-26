@@ -19,7 +19,8 @@ app.commandLine.appendSwitch('enable-features', 'ParallelDownloading');
 app.userAgentFallback = app.userAgentFallback.replace(/\s(nova-browser|Nova)\/\S+/gi, '').replace(/\sElectron\/\S+/, '');
 
 const UI_H = 84; // tab strip (38) + toolbar (46)
-const page = f => 'file://' + path.join(__dirname, f).replace(/\\/g, '/');
+// Must match webContents.getURL() exactly (file:///C:/Program%20Files/...), or Nova stops recognizing its own pages.
+const page = f => require('url').pathToFileURL(path.join(__dirname, f)).href;
 const HOME = page('home.html'), WRAPPED = page('wrapped.html');
 const AI_W = 400; // side panel width
 const SB_CATS = ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'music_offtopic'];
