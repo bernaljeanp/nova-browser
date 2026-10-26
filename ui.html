@@ -44,6 +44,37 @@
   #mtitle:hover { color: var(--text); }
   #new { -webkit-app-region: no-drag; width: 30px; height: 30px; margin: 0 0 1px 4px; flex: none; }
 
+  #permbar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: #1d1a35; border-bottom: 1px solid #3a3470; font-size: 13.5px; }
+  #permbar > svg { color: #b9b0ff; flex: none; }
+  #ptxt { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #ptxt b { color: #fff; }
+  .pbtn { width: auto; height: 30px; padding: 0 14px; border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 13px; }
+  .pbtn.primary { background: #5b4bdb; color: #fff; }
+  .pbtn.primary:hover:not(:disabled) { background: #6a5ae6; color: #fff; }
+  #dl { position: relative; }
+  #dl.busy { color: var(--accent-2); background: conic-gradient(var(--accent-2) var(--p, 0%), transparent 0) border-box; }
+  #dl.busy::before { content: ""; position: absolute; inset: 2px; border-radius: 6px; background: var(--surface); }
+  #dl.busy svg { position: relative; }
+  #dlpop { position: fixed; inset: 0; }
+  .dlbox { position: absolute; right: 120px; top: 84px; width: min(400px, calc(100vw - 32px)); max-height: 70vh; display: flex; flex-direction: column;
+    border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 18px 48px #000a; overflow: hidden; }
+  .dlbox header { display: flex; align-items: center; gap: 8px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); }
+  .dlbox header b { flex: 1; font-size: 14px; }
+  #dllist { list-style: none; padding: 6px; overflow-y: auto; }
+  #dllist li { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 9px; }
+  #dllist li:hover { background: var(--surface-2); }
+  #dllist .fi { flex: 1; min-width: 0; cursor: default; }
+  #dllist .fi.done { cursor: pointer; }
+  #dllist .nm { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+  #dllist .st { margin-top: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  #dllist .pg { height: 4px; margin-top: 6px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+  #dllist .pg i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  #dllist li > button { width: 28px; height: 28px; flex: none; }
+  #dllist .empty { justify-content: center; color: var(--muted); font-size: 13px; padding: 22px; }
+  .tab.incog { background: #221b3d; }
+  .tab.incog.on { background: #2a2150; }
+  .tab .mask { flex: none; color: #b9b0ff; }
+  .tab .mask svg { width: 14px; height: 14px; }
   #favbar { height: 32px; display: flex; align-items: center; gap: 2px; padding: 0 8px; background: var(--surface); border-bottom: 1px solid var(--line); }
   #favs { flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; }
   .bm { display: flex; align-items: center; gap: 7px; width: auto; max-width: 180px; height: 26px; padding: 0 9px 0 7px; flex: none; border-radius: 7px; color: #c3c6db; font-size: 12.5px; }
@@ -138,6 +169,7 @@
     </div>
     <button id="errs" hidden title="Copiar paquete de depuración para la IA (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span id="errn">0</span></button>
     <button id="yt" hidden title="Opciones de YouTube" aria-label="Opciones de YouTube"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z"/></svg></button>
+    <button id="dl" hidden title="Descargas (Ctrl+Shift+Y)" aria-label="Descargas"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
     <button id="ai" title="Nova IA: resume y pregunta (Ctrl+J)" aria-label="Nova IA"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg></button>
     <button id="pick" title="Señalar elemento a la IA (Ctrl+Shift+X)" aria-label="Señalar elemento a la IA"><svg viewBox="0 0 24 24"><path d="M3 3l7.1 17 2.5-7.4L20 10.1z"/><path d="M13 13l6 6"/></svg></button>
     <button id="split" title="Vista dividida (Ctrl+\)" aria-label="Vista dividida"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></button>
@@ -151,6 +183,20 @@
   </div>
 
   <nav id="favbar" hidden aria-label="Barra de favoritos"><div id="favs"></div><button id="favmore" hidden title="Más favoritos" aria-label="Más favoritos">»</button></nav>
+
+  <div id="permbar" hidden role="alertdialog" aria-labelledby="ptxt">
+    <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <span id="ptxt"></span>
+    <button id="pdeny" class="pbtn">Bloquear</button>
+    <button id="pallow" class="pbtn primary">Permitir</button>
+  </div>
+
+  <div id="dlpop" hidden>
+    <section class="dlbox" role="dialog" aria-label="Descargas">
+      <header><b>Descargas</b><button id="dlfolder" class="pbtn">Abrir carpeta</button><button id="dlclear" class="pbtn">Limpiar</button></header>
+      <ul id="dllist"></ul>
+    </section>
+  </div>
 
   <div id="pal" hidden>
     <div class="box" role="dialog" aria-label="Paleta de comandos">
@@ -168,6 +214,7 @@
   const fmt = n => n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : n.toLocaleString('es');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const x = '<svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+  const MASK = '<svg viewBox="0 0 24 24"><path d="M3 10c2-2 5-3 9-3s7 1 9 3c0 4-2 7-5 7-2 0-3-2-4-2s-2 2-4 2c-3 0-5-3-5-7z"/><path d="M8 11.5h.01M16 11.5h.01"/></svg>';
   const SOUND = '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
   const MUTED = '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>';
   let S = { tabs: [] }, P = { history: [], servers: [] };
@@ -225,6 +272,12 @@
     ['Nova IA: resumir y preguntar', 'Ctrl+J', 'ai'],
     ['Mi Nova Wrapped', 'tiempo recuperado este mes', 'wrapped'],
     ['Video flotante automático', () => S.yt?.autoPip ? 'activado' : 'desactivado', () => nova.cmd('yt', 'autoPip')],
+    ['Nueva pestaña de incógnito', 'Ctrl+Shift+N', 'incognito'],
+    ['Descargas', 'Ctrl+Shift+Y', 'dlPanel'],
+    ['Imprimir', 'Ctrl+P', 'print'],
+    ['Guardar página como PDF', 'en Descargas', 'pdf'],
+    ['Pantalla completa', 'F11', 'fullscreen'],
+    ['Restablecer permisos de este sitio', 'cámara, micrófono, notificaciones', 'permReset'],
     ['Guardar en favoritos', 'Ctrl+D', 'bookmark'],
     ['Mostrar u ocultar barra de favoritos', 'Ctrl+Shift+B', () => nova.cmd('yt', 'favBar')],
     ['Importar desde Chrome', 'favoritos e historial', () => nova.cmd('import', 'Chrome')],
@@ -317,14 +370,79 @@
   $('favs').oncontextmenu = e => { const f = e.target.closest('.bm'); if (f) { e.preventDefault(); nova.cmd('favMenu', { url: f.dataset.url, x: e.clientX, y: e.clientY }); } };
   $('favmore').onclick = () => { const r = $('favmore').getBoundingClientRect(); nova.cmd('favMore', { urls: JSON.parse($('favmore').dataset.urls || '[]'), x: r.left, y: r.bottom }); };
 
+  // Permission bar: one request at a time; the answer is remembered for that site.
+  const PERM_TXT = { camera: 'tu cámara', microphone: 'tu micrófono', notifications: 'enviarte notificaciones', geolocation: 'conocer tu ubicación', 'clipboard-read': 'leer tu portapapeles', screen: 'compartir tu pantalla' };
+  const joinEs = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' y ' + a.at(-1) : a[0];
+  nova.on('perm', p => {
+    $('permbar').hidden = !p;
+    if (!p) return;
+    const wants = p.keys.map(k => PERM_TXT[k] || k), uses = p.keys.every(k => k === 'camera' || k === 'microphone' || k === 'screen');
+    $('ptxt').innerHTML = `<b>${esc(p.host)}</b> quiere ${uses ? 'usar ' : ''}${esc(joinEs(wants))}`;
+    $('pallow').focus();
+  });
+  $('pallow').onclick = () => nova.cmd('permAnswer', true);
+  $('pdeny').onclick = () => nova.cmd('permAnswer', false);
+
+  // Downloads: toolbar button with a progress ring, popover list.
+  let DL = [];
+  const speed = {}; // id -> { t, b } last sample, for MB/s
+  const dec = n => n.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const bytes = n => n >= 1e9 ? dec(n / 1e9) + ' GB' : n >= 1e6 ? dec(n / 1e6) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB';
+  const DLI = {
+    pause: '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>', play: '<svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>',
+    cancel: x, folder: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  };
+  function drawDownloads() {
+    const active = DL.filter(d => d.state === 'progressing');
+    $('dl').hidden = !DL.length;
+    const tot = active.reduce((a, d) => a + (d.total || 0), 0), got = active.reduce((a, d) => a + d.received, 0);
+    $('dl').classList.toggle('busy', active.length > 0);
+    $('dl').style.setProperty('--p', (tot ? Math.round(got / tot * 100) : 15) + '%');
+    $('dllist').innerHTML = DL.length ? DL.map(d => {
+      let st, act;
+      if (d.state === 'progressing') {
+        const now = Date.now(), prev = speed[d.id], rate = prev && now > prev.t ? (d.received - prev.b) / ((now - prev.t) / 1000) : 0;
+        speed[d.id] = { t: now, b: d.received };
+        st = d.paused ? 'En pausa' : `${bytes(d.received)}${d.total ? ' de ' + bytes(d.total) : ''}${rate > 0 ? ' · ' + bytes(rate) + '/s' : ''}`;
+        act = `<button data-a="dlPause" title="${d.paused ? 'Reanudar' : 'Pausar'}" aria-label="${d.paused ? 'Reanudar' : 'Pausar'}">${d.paused ? DLI.play : DLI.pause}</button><button data-a="dlCancel" title="Cancelar" aria-label="Cancelar">${DLI.cancel}</button>`;
+      } else {
+        st = d.state === 'completed' ? (d.total ? bytes(d.total) + ' · ' : '') + 'Completado' : d.state === 'cancelled' ? 'Cancelada' : 'Interrumpida';
+        act = d.state === 'completed' ? `<button data-a="dlShow" title="Mostrar en carpeta" aria-label="Mostrar en carpeta">${DLI.folder}</button>` : '';
+      }
+      const pct = d.total ? Math.round(d.received / d.total * 100) : 0;
+      return `<li data-id="${d.id}"><div class="fi${d.state === 'completed' ? ' done' : ''}" title="${esc(d.name)}"><div class="nm">${esc(d.name)}</div><div class="st">${st}</div>${d.state === 'progressing' ? `<div class="pg"><i style="width:${pct}%"></i></div>` : ''}</div>${act}</li>`;
+    }).join('') : '<li class="empty">Aún no hay descargas</li>';
+  }
+  nova.on('downloads', list => { DL = list; drawDownloads(); });
+  const closeDl = () => { $('dlpop').hidden = true; nova.cmd('overlay', false); };
+  nova.on('dl-panel', () => {
+    const r = $('dl').hidden ? $('ai').getBoundingClientRect() : $('dl').getBoundingClientRect();
+    const box = document.querySelector('.dlbox');
+    box.style.top = r.bottom + 6 + 'px';
+    box.style.right = Math.max(16, innerWidth - r.right) + 'px';
+    $('dlpop').hidden = false;
+    $('dlfolder').focus();
+  });
+  $('dl').onclick = () => nova.cmd('dlPanel');
+  $('dlpop').onmousedown = e => { if (e.target === $('dlpop')) closeDl(); };
+  $('dlpop').onkeydown = e => { if (e.key === 'Escape') closeDl(); };
+  $('dlfolder').onclick = () => { nova.cmd('dlFolder'); closeDl(); };
+  $('dlclear').onclick = () => nova.cmd('dlClear');
+  $('dllist').onclick = e => {
+    const li = e.target.closest('li[data-id]'); if (!li) return;
+    const id = +li.dataset.id, btn = e.target.closest('button');
+    if (btn) return nova.cmd(btn.dataset.a, id);
+    if (e.target.closest('.fi.done')) { nova.cmd('dlOpen', id); closeDl(); }
+  };
+
   nova.on('blocked', n => $('count').textContent = fmt(n));
   nova.on('focus-url', () => { findMode(false); url.focus(); });
   nova.on('state', s => {
     S = s;
     $('tabs').innerHTML = s.tabs.map(t => `
-      <div class="tab${t.id === s.active ? ' on' : ''}${t.id === s.split ? ' split' : ''}${t.loading ? ' loading' : ''}${t.sleeping ? ' sleep' : ''}" data-id="${t.id}" title="${esc(t.title)}">
+      <div class="tab${t.id === s.active ? ' on' : ''}${t.id === s.split ? ' split' : ''}${t.loading ? ' loading' : ''}${t.sleeping ? ' sleep' : ''}${t.incognito ? ' incog' : ''}" data-id="${t.id}" title="${t.incognito ? 'Incógnito · ' : ''}${esc(t.title)}">
         ${t.favicon && !t.loading ? `<img src="${esc(t.favicon)}" alt="">` : '<i class="dot"></i>'}
-        <span>${esc(t.title)}</span>
+        ${t.incognito ? `<i class="mask" aria-label="Incógnito">${MASK}</i>` : ''}<span>${esc(t.title)}</span>
         ${t.errors ? `<b title="Errores">${t.errors}</b>` : ''}
         ${t.audible || t.muted ? `<button class="snd${t.muted ? ' muted' : ''}" title="${t.muted ? 'Activar sonido' : 'Silenciar'}" aria-label="${t.muted ? 'Activar sonido' : 'Silenciar'}">${t.muted ? MUTED : SOUND}</button>` : ''}
         <button class="x" aria-label="Cerrar pestaña">${x}</button>

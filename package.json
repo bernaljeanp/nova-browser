@@ -1,7 +1,7 @@
 {
   "name": "nova-browser",
   "productName": "Nova",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Navegador ligero sobre Chromium con bloqueo de anuncios y SponsorBlock",
   "author": "bernaljeanp",
   "main": "main.js",

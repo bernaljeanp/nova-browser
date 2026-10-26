@@ -1,4 +1,4 @@
-const { app, BaseWindow, BrowserWindow, WebContentsView, ipcMain, session, Menu, clipboard, shell, nativeImage } = require('electron');
+const { app, BaseWindow, BrowserWindow, WebContentsView, ipcMain, session, Menu, clipboard, shell, nativeImage, desktopCapturer } = require('electron');
 const { spawn } = require('child_process');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const { DatabaseSync } = require('node:sqlite');
@@ -6,6 +6,11 @@ const fs = require('fs/promises');
 const path = require('path');
 
 // One Nova at a time: links opened from other apps arrive as a new tab in the running window.
+// Dev/test: an isolated profile (own data, downloads and single-instance lock) so it never touches the installed Nova.
+if (process.env.NOVA_PROFILE) {
+  app.setPath('userData', process.env.NOVA_PROFILE);
+  app.setPath('downloads', path.join(process.env.NOVA_PROFILE, 'Descargas'));
+}
 const PRIMARY = app.requestSingleInstanceLock();
 if (!PRIMARY) app.quit();
 const urlArg = argv => argv.slice(1).find(a => /^(https?|file):\/\//i.test(a));
@@ -80,8 +85,8 @@ function toUrl(input) {
 
 const info = t => t.view
   ? { url: t.view.webContents.getURL(), title: t.view.webContents.getTitle(), favicon: t.favicon, loading: t.view.webContents.isLoading(), errors: t.errors.length + t.net.length,
-      audible: t.view.webContents.isCurrentlyAudible(), muted: t.view.webContents.isAudioMuted() }
-  : { url: t.url, title: t.title, favicon: t.favicon, loading: false, errors: 0, sleeping: true };
+      audible: t.view.webContents.isCurrentlyAudible(), muted: t.view.webContents.isAudioMuted(), incognito: t.incognito }
+  : { url: t.url, title: t.title, favicon: t.favicon, loading: false, errors: 0, sleeping: true, incognito: t.incognito };
 
 function state() {
   if (!ui) return;
@@ -108,9 +113,19 @@ function sendFavs() {
   ui?.webContents.send('favs', { show: showFavBar(), list });
 }
 
+const PERMBAR_H = 44;
+let fullscreen = false, videoFull = false; // F11, and a page's own fullscreen button (YouTube)
+
 function layout() {
-  const top = UI_H + (showFavBar() ? FAVBAR_H : 0);
-  const { width: full, height: H } = win.getContentBounds(), h = H - top;
+  const { width: full, height: H } = win.getContentBounds();
+  if (fullscreen || videoFull) { // only the active page, edge to edge
+    ui.setBounds({ x: 0, y: 0, width: full, height: 0 });
+    aiView?.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    if (split != null) tabs.get(split)?.view?.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    tabs.get(active)?.view?.setBounds({ x: 0, y: 0, width: full, height: H });
+    return;
+  }
+  const top = UI_H + (showFavBar() ? FAVBAR_H : 0) + (permQ.length ? PERMBAR_H : 0), h = H - top;
   ui.setBounds({ x: 0, y: 0, width: full, height: overlay ? H : top });
   const W = aiOpen ? full - AI_W : full;
   if (aiOpen) aiView.setBounds({ x: W, y: top, width: AI_W, height: h });
@@ -315,7 +330,7 @@ async function scanServers() {
   servers = found.filter(Boolean);
 }
 
-function remember(url, title) {
+function rememberVisit(url, title) {
   if (!/^https?:/.test(url)) return;
   history = [{ url, title: title || url, t: Date.now() }, ...history.filter(h => h.url !== url)].slice(0, HISTORY_MAX);
 }
@@ -516,6 +531,7 @@ function contextMenu(wc, p) {
   if (p.linkURL) items.push(
     { label: 'Abrir enlace en nueva pestaña', click: () => newTab(clean(p.linkURL), false) },
     { label: 'Abrir enlace en vista dividida', click: () => { const id = newTab(clean(p.linkURL), false); split = id; render(); } },
+    { label: 'Abrir enlace en pestaña de incógnito', click: () => newTab(clean(p.linkURL), true, true) },
     { label: 'Copiar enlace', click: () => clipboard.writeText(clean(p.linkURL)) }, { type: 'separator' });
   if (p.mediaType === 'image') items.push(
     { label: 'Copiar imagen', click: () => wc.copyImageAt(p.x, p.y) },
@@ -530,7 +546,9 @@ function contextMenu(wc, p) {
     { label: 'Recargar', click: () => wc.reload() }, { type: 'separator' },
     { label: 'Señalar elemento a la IA', click: cmd.pick },
     { label: 'Copiar paquete de depuración', click: cmd.copyErrors },
-    { label: 'Captura al portapapeles', click: cmd.shot }, { type: 'separator' });
+    { label: 'Captura al portapapeles', click: cmd.shot },
+    { label: 'Imprimir…', click: cmd.print },
+    { label: 'Guardar como PDF', click: cmd.pdf }, { type: 'separator' });
   items.push({ label: 'Inspeccionar', click: () => wc.inspectElement(p.x, p.y) });
   Menu.buildFromTemplate(items).popup();
 }
@@ -557,6 +575,11 @@ function keys(target) {
       : c && k === '-' ? () => cmd.zoom(-1)
       : c && k === '0' ? () => cmd.zoom(0)
       : c && k === '\\' ? cmd.split
+      : c && !s && k === 'p' ? cmd.print
+      : c && s && k === 'n' ? cmd.incognito
+      : c && s && k === 'y' ? cmd.dlPanel
+      : k === 'f11' ? cmd.fullscreen
+      : k === 'escape' && fullscreen && !videoFull ? cmd.fullscreen
       : c && !s && k === 'd' ? cmd.bookmark
       : c && s && k === 'b' ? () => cmd.yt('favBar')
       : c && !s && k === 'j' ? cmd.ai
@@ -572,8 +595,10 @@ function keys(target) {
 }
 
 function wake(id, url) {
-  const t = { view: new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true } }),
-    shown: false, favicon: tabs.get(id)?.favicon || '', lastSeen: Date.now(), errors: [], net: [] };
+  const incognito = !!tabs.get(id)?.incognito;
+  const t = { view: new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, partition: incognito ? INCOGNITO : undefined } }),
+    shown: false, favicon: tabs.get(id)?.favicon || '', lastSeen: Date.now(), errors: [], net: [], incognito };
+  const remember = incognito ? () => {} : rememberVisit; // incognito leaves no history
   const wc = t.view.webContents;
   tabs.set(id, t);
   keys(wc);
@@ -609,13 +634,16 @@ function wake(id, url) {
   wc.on('render-process-gone', (_e, d) => { t.errors.push(`El proceso de la página terminó: ${d.reason}`); state(); });
   wc.on('context-menu', (_e, p) => contextMenu(wc, p));
   wc.on('found-in-page', (_e, r) => ui.webContents.send('found', r));
+  // A page's own fullscreen (YouTube's button) must cover the whole screen, Nova's bars included.
+  wc.on('enter-html-full-screen', () => { videoFull = true; win.setFullScreen(true); layout(); });
+  wc.on('leave-html-full-screen', () => { videoFull = false; if (!fullscreen) win.setFullScreen(false); layout(); });
   for (const ev of ['did-start-loading', 'did-stop-loading']) wc.on(ev, state);
   wc.loadURL(url);
 }
 
-function newTab(url = HOME, focus = true) {
+function newTab(url = HOME, focus = true, incognito = false) {
   const id = nextId++;
-  tabs.set(id, { url, title: '', favicon: '' });
+  tabs.set(id, { url, title: '', favicon: '', incognito });
   if (focus) select(id); else { wake(id, url); state(); }
   return id;
 }
@@ -643,9 +671,15 @@ function close(id) {
   if (!t) return;
   const ids = [...tabs.keys()], i = ids.indexOf(id);
   const url = info(t).url;
-  if (url && url !== HOME) closed.push(url);
+  if (url && url !== HOME && !t.incognito) closed.push(url);
   tabs.delete(id);
   if (t.view) { if (t.shown) win.contentView.removeChildView(t.view); t.view.webContents.close(); }
+  // Last incognito tab gone: forget its cookies, cache and site permissions.
+  if (t.incognito && ![...tabs.values()].some(x => x.incognito)) {
+    const s = session.fromPartition(INCOGNITO);
+    s.clearStorageData().catch(() => {}); s.clearCache().catch(() => {});
+    for (const k in tempPerms) delete tempPerms[k];
+  }
   if (id === split) split = null;
   if (!tabs.size) return newTab();
   if (id === active) {
@@ -754,6 +788,51 @@ const cmd = {
   },
   find: ({ text, next, back }) => text ? wc().findInPage(text, { findNext: !!next, forward: !back }) : wc().stopFindInPage('clearSelection'),
   findStop: () => wc().stopFindInPage('clearSelection'),
+  // Permission bar
+  permAnswer: allow => {
+    const p = permQ.shift();
+    if (!p) return;
+    if (p.save) {
+      p.save[p.origin] = { ...p.save[p.origin], ...Object.fromEntries(p.keys.map(k => [k, !!allow])) };
+      if (p.save === perms) saveJSON('perms.json', perms);
+    }
+    p.done(!!allow);
+    showPermission();
+  },
+  permReset: () => {
+    const o = originOf(wc().getURL());
+    delete perms[o]; delete tempPerms[o];
+    saveJSON('perms.json', perms);
+    toast(`Permisos de ${o.replace(/^https?:\/\//, '')} restablecidos`);
+  },
+  // Downloads
+  dlPanel: () => { overlay = true; render(); ui.webContents.focus(); sendDownloads(); ui.webContents.send('dl-panel'); },
+  dlOpen: id => { const d = downloads.find(x => x.id === id); if (d) shell.openPath(d.path).then(err => err && toast('No se pudo abrir: el archivo ya no existe')); },
+  dlShow: id => { const d = downloads.find(x => x.id === id); if (d) shell.showItemInFolder(d.path); },
+  dlCancel: id => dlItems.get(id)?.cancel(),
+  dlPause: id => { const it = dlItems.get(id); if (it) it.isPaused() ? it.resume() : it.pause(); },
+  dlFolder: () => shell.openPath(app.getPath('downloads')),
+  dlClear: () => { downloads = downloads.filter(d => d.state === 'progressing'); saveJSON('downloads.json', []); sendDownloads(); },
+  // Print / PDF / fullscreen / incognito
+  print: () => wc().print({}, () => {}),
+  pdf: async () => {
+    const w = wc(), dir = app.getPath('downloads');
+    const name = freeName(dir, `${(w.getTitle() || 'pagina').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 80) || 'pagina'}.pdf`);
+    const file = path.join(dir, name);
+    await fs.writeFile(file, await w.printToPDF({ printBackground: true }));
+    downloads = [{ id: ++dlSeq, name, path: file, url: w.getURL(), total: 0, received: 0, state: 'completed', start: Date.now() }, ...downloads].slice(0, 50);
+    saveJSON('downloads.json', downloads.filter(x => x.state !== 'progressing'));
+    sendDownloads();
+    shell.showItemInFolder(file);
+    toast(`Guardado como PDF: ${name}`);
+  },
+  fullscreen: () => {
+    fullscreen = !(fullscreen || videoFull);
+    if (!fullscreen && videoFull) wc().executeJavaScript('document.exitFullscreen?.()').catch(() => {});
+    win.setFullScreen(fullscreen);
+    layout();
+  },
+  incognito: () => newTab(HOME, true, true),
   yt: key => {
     if (!(key in LABELS)) return;
     settings[key] = !settings[key];
@@ -849,6 +928,8 @@ async function restore() {
   try { stats = JSON.parse(await fs.readFile(path.join(USER, 'stats.json'), 'utf8')); } catch {}
   try { icons = JSON.parse(await fs.readFile(path.join(USER, 'icons.json'), 'utf8')); for (const h in icons) if (!icons[h]) delete icons[h]; } catch {}
   sendFavs(); // after icons, so the bar shows logos right away
+  sendDownloads();
+  showPermission();
   const launchUrl = urlArg(process.argv);
   if (launchUrl) { await restoreSession(); return newTab(clean(launchUrl)); }
   if (await restoreSession()) return;
@@ -881,23 +962,64 @@ function autoUpdate() {
   setInterval(check, 6 * 3600e3);
 }
 
-app.whenReady().then(async () => {
-  if (!PRIMARY) return;
-  USER = app.getPath('userData');
-  const blocker = await loadBlocker();
-  const ses = session.defaultSession;
-  blocker.enableBlockingInSession(ses);
-  blocker.on('request-blocked', () => { blocked++; month().blocked++; ui?.webContents.send('blocked', blocked); });
+// ---------- sessions: normal and incognito get the same protections ----------
+const INCOGNITO = 'nova-incognito'; // no "persist:" prefix, so it lives only in memory
+const SAFE = new Set(['fullscreen', 'pointerLock', 'clipboard-sanitized-write', 'speaker-selection']);
+const ASKABLE = new Set(['media', 'notifications', 'geolocation', 'clipboard-read']);
+let perms = {}, tempPerms = {}; // origin -> { camera|microphone|notifications|...: true/false }; temp = incognito, never saved
+const permQ = []; // pending prompts, shown one at a time in the permission bar
+const originOf = u => { try { return new URL(u).origin; } catch { return ''; } };
+const permKeys = (perm, d) => perm === 'media'
+  ? (d.mediaTypes?.length ? d.mediaTypes : [d.mediaType]).filter(Boolean).map(m => m === 'video' ? 'camera' : 'microphone')
+  : [perm];
 
-  // Electron grants every permission by default; deny all but harmless ones. Local dev hosts get everything.
-  // ponytail: no per-site prompt yet, so camera/mic on public sites (Meet, Zoom web) won't work. Add a prompt bar when needed.
-  const SAFE = new Set(['fullscreen', 'pointerLock', 'clipboard-sanitized-write', 'speaker-selection']);
-  ses.setPermissionRequestHandler((_wc, perm, done, d) => done(SAFE.has(perm) || isLocal(d.requestingUrl)));
-  ses.setPermissionCheckHandler((_wc, perm, origin) => SAFE.has(perm) || isLocal(origin));
+function askPermission(origin, keys, save, done) {
+  permQ.push({ origin, keys, save, done });
+  if (permQ.length === 1) showPermission();
+}
+function showPermission() {
+  const p = permQ[0];
+  ui?.webContents.send('perm', p ? { host: new URL(p.origin).host, keys: p.keys } : null);
+  if (win) layout();
+}
+
+function setupSession(ses, blocker, incognito) {
+  // The ad blocker registers global IPC handlers per session, and a second registration throws before it
+  // hooks the network filters. Those handlers only forward to the shared blocker, so the first set serves
+  // every session: skip the duplicates while enabling the incognito one.
+  const handle = ipcMain.handle;
+  if (incognito) ipcMain.handle = (ch, fn) => { try { handle.call(ipcMain, ch, fn); } catch {} };
+  try { blocker.enableBlockingInSession(ses); } finally { ipcMain.handle = handle; }
+  const store = incognito ? tempPerms : perms;
+  const decided = (origin, keys) => keys.length && keys.every(k => store[origin]?.[k] === true) ? true
+    : keys.some(k => store[origin]?.[k] === false) ? false : null;
+
+  // Electron grants everything by default. Here: harmless ones yes, local dev hosts yes,
+  // camera/mic/notifications/location ask once per site (remembered), everything else no.
+  ses.setPermissionRequestHandler((_wc, perm, done, d) => {
+    const origin = originOf(d.requestingUrl);
+    if (SAFE.has(perm) || isLocal(d.requestingUrl)) return done(true);
+    if (!ASKABLE.has(perm) || !origin.startsWith('https:')) return done(false);
+    const keys = permKeys(perm, d), known = decided(origin, keys);
+    if (known !== null) return done(known);
+    askPermission(origin, keys, incognito ? tempPerms : perms, done);
+  });
+  ses.setPermissionCheckHandler((_wc, perm, origin, d) =>
+    SAFE.has(perm) || isLocal(origin) || (ASKABLE.has(perm) && decided(originOf(origin), permKeys(perm, d || {})) === true));
   ses.setDevicePermissionHandler(d => isLocal(d.origin)); // WebHID/USB/Serial only for local dev
-  // Self-signed certs are normal for local HTTPS dev servers; everywhere else a bad cert is refused.
-  app.on('certificate-error', (e, _wc, url, _err, _cert, cb) => { if (isLocal(url)) { e.preventDefault(); cb(true); } else cb(false); });
-  app.on('web-contents-created', (_e, c) => c.on('will-attach-webview', e => e.preventDefault()));
+
+  // Screen sharing (Meet, Zoom web): ask every time, then share the main screen.
+  // ponytail: no window/screen picker yet, always the primary screen.
+  ses.setDisplayMediaRequestHandler((req, cb) => {
+    const origin = originOf(req.securityOrigin || req.frame?.url || '');
+    askPermission(origin || 'https://sitio', ['screen'], null, async ok => {
+      if (!ok) return cb({});
+      const [src] = await desktopCapturer.getSources({ types: ['screen'] });
+      cb(src ? { video: src } : {});
+    });
+  });
+
+  ses.on('will-download', onDownload);
 
   // Failed requests feed the debug pack, only on local dev tabs (public sites would drown it in tracker 4xx).
   // onCompleted/onErrorOccurred are free; the ad blocker owns onBeforeRequest/onHeadersReceived.
@@ -908,9 +1030,54 @@ app.whenReady().then(async () => {
     state();
   };
   ses.webRequest.onCompleted(d => { if (d.statusCode >= 400) netFail(d, `HTTP ${d.statusCode}`); });
-  ses.webRequest.onErrorOccurred(d => {
-    if (!/ERR_(BLOCKED_BY_CLIENT|ABORTED)/.test(d.error)) netFail(d, d.error);
+  ses.webRequest.onErrorOccurred(d => { if (!/ERR_(BLOCKED_BY_CLIENT|ABORTED)/.test(d.error)) netFail(d, d.error); });
+}
+
+// ---------- downloads: straight to the Downloads folder, like Chrome ----------
+let downloads = [], dlSeq = Date.now();
+const dlItems = new Map(); // id -> DownloadItem while in progress
+function freeName(dir, name) {
+  const { name: base, ext } = path.parse(name || 'descarga');
+  let n = name || 'descarga', i = 1;
+  while (require('fs').existsSync(path.join(dir, n))) n = `${base} (${i++})${ext}`;
+  return n;
+}
+function sendDownloads() { ui?.webContents.send('downloads', downloads); }
+function onDownload(_e, item) {
+  const dir = app.getPath('downloads'), name = freeName(dir, item.getFilename());
+  item.setSavePath(path.join(dir, name));
+  const d = { id: ++dlSeq, name, path: path.join(dir, name), url: item.getURL(), total: item.getTotalBytes(), received: 0, state: 'progressing', paused: false, start: Date.now() };
+  downloads = [d, ...downloads].slice(0, 50);
+  dlItems.set(d.id, item);
+  let last = 0;
+  item.on('updated', (_ev, st) => {
+    Object.assign(d, { received: item.getReceivedBytes(), total: item.getTotalBytes(), paused: item.isPaused(), state: st === 'interrupted' ? 'interrupted' : 'progressing' });
+    if (Date.now() - last > 400) { last = Date.now(); sendDownloads(); }
   });
+  item.once('done', (_ev, st) => {
+    Object.assign(d, { state: st, received: item.getReceivedBytes() });
+    dlItems.delete(d.id);
+    saveJSON('downloads.json', downloads.filter(x => x.state !== 'progressing'));
+    sendDownloads();
+    toast(st === 'completed' ? `Descargado: ${name}` : `Descarga ${st === 'cancelled' ? 'cancelada' : 'interrumpida'}: ${name}`);
+  });
+  sendDownloads();
+  toast(`Descargando ${name}`);
+}
+
+app.whenReady().then(async () => {
+  if (!PRIMARY) return;
+  USER = app.getPath('userData');
+  app.setAppUserModelId('com.bernaljeanp.nova'); // Windows only shows web notifications for a registered app id
+  try { perms = JSON.parse(await fs.readFile(path.join(USER, 'perms.json'), 'utf8')); } catch {}
+  try { downloads = JSON.parse(await fs.readFile(path.join(USER, 'downloads.json'), 'utf8')); } catch {}
+  const blocker = await loadBlocker();
+  blocker.on('request-blocked', () => { blocked++; month().blocked++; ui?.webContents.send('blocked', blocked); });
+  setupSession(session.defaultSession, blocker, false);
+  setupSession(session.fromPartition(INCOGNITO), blocker, true);
+  // Self-signed certs are normal for local HTTPS dev servers; everywhere else a bad cert is refused.
+  app.on('certificate-error', (e, _wc, url, _err, _cert, cb) => { if (isLocal(url)) { e.preventDefault(); cb(true); } else cb(false); });
+  app.on('web-contents-created', (_e, c) => c.on('will-attach-webview', e => e.preventDefault()));
 
   win = new BaseWindow({
     width: 1360, height: 860, minWidth: 640, minHeight: 400, backgroundColor: '#0a0b10', title: 'Nova',
@@ -932,7 +1099,8 @@ app.whenReady().then(async () => {
   win.on('resize', layout);
   win.on('close', () => {
     const sync = require('fs');
-    sync.writeFileSync(path.join(USER, 'session.json'), JSON.stringify({ tabs: [...tabs.values()].map(t => info(t).url), active: [...tabs.keys()].indexOf(active) }));
+    const keep = [...tabs].filter(([, t]) => !t.incognito); // incognito tabs never come back
+    sync.writeFileSync(path.join(USER, 'session.json'), JSON.stringify({ tabs: keep.map(([, t]) => info(t).url), active: Math.max(0, keep.findIndex(([id]) => id === active)) }));
     sync.writeFileSync(path.join(USER, 'history.json'), JSON.stringify(history));
     sync.writeFileSync(path.join(USER, 'stats.json'), JSON.stringify(stats));
   });
