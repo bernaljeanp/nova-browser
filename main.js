@@ -14,6 +14,9 @@ const urlArg = argv => argv.slice(1).find(a => /^(https?|file):\/\//i.test(a));
 app.commandLine.appendSwitch('force_high_performance_gpu');
 // Split each download across several connections; helps most with servers that cap speed per connection.
 app.commandLine.appendSwitch('enable-features', 'ParallelDownloading');
+// Present as plain Chrome: Google blocks sign-in ("this browser may not be secure") when the user agent
+// says Electron, and some sites degrade for unknown browsers.
+app.userAgentFallback = app.userAgentFallback.replace(/\s(nova-browser|Nova)\/\S+/gi, '').replace(/\sElectron\/\S+/, '');
 
 const UI_H = 84; // tab strip (38) + toolbar (46)
 const page = f => 'file://' + path.join(__dirname, f).replace(/\\/g, '/');
