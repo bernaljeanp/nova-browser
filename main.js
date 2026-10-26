@@ -59,6 +59,17 @@ function statsSummary() {
 const seenVideo = new Map(); // webContents id -> last counted video id
 
 let aiView = null, aiOpen = false, aiTab = null, aiIdle;
+let lensView = null, lensOpen = false;
+const lensJobs = new Set();
+function ensureAiView() {
+  if (!aiView) {
+    aiView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false } });
+    aiView.setBackgroundColor('#0e1017');
+    keys(aiView.webContents);
+    aiView.webContents.loadFile('ai.html');
+  }
+  return aiView;
+}
 const isYouTube = u => { try { return /(^|\.)youtube\.com$/.test(new URL(u).hostname); } catch { return false; } };
 const closed = []; // urls of closed tabs, for Ctrl+Shift+T
 // id -> { view, shown, lastSeen, favicon, errors } while awake, { url, title, favicon } while sleeping
@@ -862,17 +873,18 @@ const cmd = {
   ai: () => {
     aiOpen = !aiOpen;
     clearTimeout(aiIdle);
-    if (aiOpen && !aiView) {
-      aiView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js') } });
-      aiView.setBackgroundColor('#0e1017');
-      keys(aiView.webContents);
-      aiView.webContents.loadFile('ai.html');
-    }
+    if (aiOpen) ensureAiView();
     // A closed panel keeps its model warm for 10 min, then frees the GPU memory.
-    if (!aiOpen) aiIdle = setTimeout(() => { if (!aiOpen && aiView) { aiView.webContents.close(); aiView = null; } }, 10 * 60e3);
+    if (!aiOpen) aiIdle = setTimeout(() => { if (!aiOpen && !lensOpen && aiView) { aiView.webContents.close(); aiView = null; } }, 10 * 60e3);
     render();
     if (aiOpen) aiView.webContents.focus();
   },
+  // Lentes de Nova
+  lens: () => lensOpen ? closeLens() : openLens(),
+  lensClose: () => closeLens(),
+  // Lens AI jobs run on the AI panel's engine (one model in GPU memory), even while the panel is closed.
+  lensAI: job => { lensJobs.add(job.id); ensureAiView().webContents.send('ai-job', job); },
+  aiJob: msg => { if (lensJobs.has(msg.id)) { lensView?.webContents.send('lens-ai', msg); if (msg.done || msg.error) lensJobs.delete(msg.id); } },
   aiStatus: async () => aiView?.webContents.send('ai-status', { ollama: await ensureOllama() }),
   aiContext: async () => {
     aiTab = active;
@@ -885,6 +897,7 @@ const cmd = {
   },
   seek: s => {
     if (!tabs.has(aiTab)) return;
+    closeLens();
     select(aiTab);
     wc().executeJavaScript(`(() => { const v = document.querySelector('video'); if (v) { v.currentTime = ${Number(s) || 0}; v.play(); } })()`, true).catch(() => {});
   },
