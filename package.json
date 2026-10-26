@@ -1,0 +1,70 @@
+{
+  "name": "nova-browser",
+  "productName": "Nova",
+  "version": "1.0.0",
+  "description": "Navegador ligero sobre Chromium con bloqueo de anuncios y SponsorBlock",
+  "author": "bernaljeanp",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "release": "electron-builder --win nsis --publish always"
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.20.1",
+    "@mlc-ai/web-llm": "^0.2.86",
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.bernaljeanp.nova",
+    "productName": "Nova",
+    "copyright": "Nova",
+    "files": [
+      "main.js",
+      "preload.js",
+      "ui.html",
+      "home.html",
+      "ai.html",
+      "wrapped.html",
+      "build/icon.png",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png",
+      "artifactName": "Nova-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nova",
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "bernaljeanp",
+      "repo": "nova-browser",
+      "releaseType": "release"
+    }
+  }
+}

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:11434 https:; img-src 'self' data:; worker-src 'self' blob:">
+<title>Nova IA</title>
+<style>
+  :root { --bg: #0e1017; --surface: #151824; --surface-2: #1c2030; --line: #262a38; --text: #e8e9f3; --muted: #8b8fa8; --accent: #7c6cff; --accent-2: #2fd4c7; --danger: #ff6b7a;
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Code", Consolas, ui-monospace, monospace; }
+  * { box-sizing: border-box; margin: 0; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px/1.55 var(--font); border-left: 1px solid var(--line); }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  header { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; font-weight: 650; }
+  #badge { padding: 3px 8px; border-radius: 99px; background: #2fd4c714; color: var(--accent-2); font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+  #close { margin-left: auto; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+  #close:hover { background: var(--surface-2); color: var(--text); }
+
+  #setup { margin: 16px; padding: 18px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); display: grid; gap: 12px; }
+  #setup h2 { font-size: 15px; }
+  #setup p { color: var(--muted); font-size: 13.5px; }
+  .primary { padding: 10px 16px; border-radius: 10px; background: #5b4bdb; color: #fff; font-weight: 600; justify-self: start; transition: filter .15s; }
+  .primary:hover { filter: brightness(1.12); }
+  .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s; }
+  #ptext { font: 11.5px var(--mono); color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  #quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px 0; }
+  #quick button { padding: 8px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; transition: border-color .15s; }
+  #quick button:hover { border-color: var(--accent); }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: grid; align-content: start; gap: 14px; }
+  #log::-webkit-scrollbar { width: 10px; }
+  #log::-webkit-scrollbar-thumb { background: var(--line); border: 3px solid var(--bg); border-radius: 6px; }
+  .msg { max-width: 100%; overflow-wrap: anywhere; }
+  .msg.user { justify-self: end; padding: 9px 13px; border-radius: 14px 14px 4px 14px; background: var(--surface-2); }
+  .msg.ai p + p, .msg.ai p + ul, .msg.ai ul + p { margin-top: 8px; }
+  .msg.ai ul { padding-left: 4px; list-style: none; display: grid; gap: 7px; }
+  .msg.ai li { padding-left: 14px; position: relative; }
+  .msg.ai li::before { content: ""; position: absolute; left: 0; top: .62em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent-2); }
+  .msg.ai strong { color: #fff; }
+  .msg.err { color: var(--danger); font-size: 13px; }
+  .msg.note { color: var(--muted); font-size: 12.5px; }
+  .ts { padding: 0 6px; margin-right: 4px; border-radius: 6px; background: #2fd4c71f; color: var(--accent-2); font: 600 12px var(--mono); }
+  .ts:hover { background: #2fd4c738; }
+  .cursor::after { content: ""; display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px; background: var(--accent-2); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .empty { color: var(--muted); font-size: 13.5px; text-align: center; padding: 24px 8px; }
+
+  form { display: flex; align-items: flex-end; gap: 8px; margin: 0 12px 12px; padding: 8px 8px 8px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  form:focus-within { border-color: var(--accent); }
+  textarea { flex: 1; resize: none; max-height: 140px; min-height: 22px; border: 0; outline: 0; background: none; color: var(--text); font: 14px/1.5 var(--font); }
+  textarea::placeholder { color: var(--muted); }
+  #send { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #5b4bdb; color: #fff; flex: none; }
+  #send:disabled { opacity: .4; cursor: default; }
+  footer { padding: 0 16px 10px; color: var(--muted); font-size: 11.5px; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .cursor::after { animation: none; } }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Nova IA</h1>
+    <span id="badge">Preparando…</span>
+    <button id="close" title="Cerrar (Ctrl+J)" aria-label="Cerrar panel"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+  </header>
+
+  <section id="setup" hidden>
+    <h2 id="stitle"></h2>
+    <p id="sbody"></p>
+    <button class="primary" id="sbtn" hidden></button>
+    <div id="prog" hidden><div class="bar"><i id="pbar"></i></div><p id="ptext"></p></div>
+  </section>
+
+  <div id="quick" hidden><button id="sum">Resumir</button><button id="keys">Explícalo simple</button></div>
+  <div id="log"><p class="empty" id="empty">Pregunta lo que quieras sobre la página o el video que tienes abierto. Todo se procesa en tu equipo.</p></div>
+
+  <form id="ask">
+    <textarea id="q" rows="1" placeholder="Pregúntale a esta página…" aria-label="Pregunta"></textarea>
+    <button id="send" type="submit" aria-label="Enviar"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+  </form>
+  <footer>100 % local · nada sale de tu equipo</footer>
+
+<script type="module">
+  import * as webllm from './node_modules/@mlc-ai/web-llm/lib/index.js';
+
+  // ~1 GB, good Spanish, runs on most recent GPUs (integrated included).
+  const WEB_MODEL = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
+  const APP_CONFIG = { ...webllm.prebuiltAppConfig, cacheBackend: 'indexeddb' }; // Cache API is unreliable on file:// pages
+  const $ = id => document.getElementById(id);
+  let engine = null;       // { kind: 'ollama', model } | { kind: 'webgpu', eng }
+  let page = { url: '', title: '', video: false };
+  let convo = { url: null, messages: [], ctx: null };
+  let busy = false, abort = null;
+
+  // ---------- engine ----------
+  const setup = (title, body, btn, onClick) => {
+    $('setup').hidden = !title;
+    $('stitle').textContent = title || ''; $('sbody').textContent = body || '';
+    $('sbtn').hidden = !btn; $('sbtn').textContent = btn || ''; $('sbtn').onclick = onClick || null;
+  };
+  const progress = (p, text) => { $('prog').hidden = false; $('pbar').style.width = Math.round((p || 0) * 100) + '%'; $('ptext').textContent = text || ''; };
+  const ready = () => { setup(); $('prog').hidden = true; $('quick').hidden = false; updateQuick(); };
+
+  nova.on('ai-status', async s => {
+    if (s.ollama.length) {
+      const model = s.ollama.find(m => /qwen|gemma|llama|mistral|phi/i.test(m)) || s.ollama[0];
+      engine = { kind: 'ollama', model };
+      $('badge').textContent = 'Local · ' + model.split(':')[0];
+      return ready();
+    }
+    const adapter = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
+    if (!adapter) {
+      $('badge').textContent = 'No disponible';
+      return setup('Tu equipo no tiene una GPU compatible', 'La IA integrada necesita WebGPU. Puedes instalar Ollama (gratis) y Nova lo usará automáticamente.',
+        'Abrir ollama.com', () => nova.cmd('openUrl', 'https://ollama.com/download'));
+    }
+    $('badge').textContent = 'Local · integrada';
+    if (await webllm.hasModelInCache(WEB_MODEL, APP_CONFIG).catch(() => false)) return loadWeb();
+    setup('Activa la IA de Nova', 'Corre 100 % en tu equipo: privada, gratis y sin cuenta. La primera vez descarga un modelo de ~1 GB que queda guardado.',
+      'Activar IA (~1 GB)', loadWeb);
+  });
+
+  async function loadWeb() {
+    $('sbtn').hidden = true;
+    setup('Preparando la IA…', 'Esto ocurre solo la primera vez. Puedes seguir navegando.');
+    try {
+      const eng = await webllm.CreateMLCEngine(WEB_MODEL, {
+        appConfig: APP_CONFIG,
+        initProgressCallback: r => progress(r.progress, r.text.replace(/\[.*?\]\s*/g, '')),
+      }, { context_window_size: 8192 });
+      engine = { kind: 'webgpu', eng };
+      ready();
+    } catch (e) {
+      setup('No se pudo iniciar la IA', String(e.message || e).slice(0, 300), 'Reintentar', loadWeb);
+    }
+  }
+
+  async function* ndjson(res) {
+    const dec = new TextDecoder(), reader = res.body.getReader();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (line) yield JSON.parse(line); }
+    }
+  }
+
+  async function generate(messages, onToken, signal) {
+    if (engine.kind === 'ollama') {
+      const res = await fetch('http://127.0.0.1:11434/api/chat', { method: 'POST', signal,
+        body: JSON.stringify({ model: engine.model, messages, stream: true, options: { num_ctx: 16384, temperature: 0.3 } }) });
+      if (!res.ok) throw new Error('Ollama respondió ' + res.status);
+      for await (const m of ndjson(res)) { if (m.error) throw new Error(m.error); if (m.message?.content) onToken(m.message.content); }
+    } else {
+      const chunks = await engine.eng.chat.completions.create({ messages, stream: true, temperature: 0.3 });
+      for await (const c of chunks) {
+        if (signal.aborted) { engine.eng.interruptGenerate(); break; }
+        onToken(c.choices[0]?.delta?.content || '');
+      }
+    }
+  }
+
+  // ---------- context ----------
+  let ctxWaiter = null;
+  nova.on('ai-context', c => { ctxWaiter?.(c); ctxWaiter = null; });
+  const fetchContext = () => new Promise(r => { ctxWaiter = r; nova.cmd('aiContext'); });
+  const cut = (s, n) => s && s.length > n ? s.slice(0, n) + '\n[…recortado]' : (s || '');
+
+  function systemPrompt(c) {
+    const max = engine.kind === 'ollama' ? 36000 : 14000; // the built-in model has a smaller context window
+    let p = 'Eres Nova IA, el asistente integrado en el navegador Nova. Respondes siempre en español, claro y breve, usando solo la información del contenido de abajo. Si algo no está en el contenido, dilo.';
+    if (c.kind === 'video') p += `\n\nVIDEO DE YOUTUBE\nTítulo: ${c.title}\nCanal: ${c.channel}\n` + (c.transcript
+      ? `Transcripción con marcas de tiempo:\n${cut(c.transcript, max)}`
+      : `Este video no tiene subtítulos disponibles. Descripción del video:\n${cut(c.description, max)}`);
+    else if (c.kind === 'page') p += `\n\nPÁGINA WEB\nTítulo: ${c.title}\nURL: ${c.url}\nTexto:\n${cut(c.text, max)}`;
+    else p = 'Eres Nova IA, el asistente integrado en el navegador Nova. Respondes siempre en español, claro y breve.';
+    return p;
+  }
+
+  // ---------- chat ----------
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const toSec = t => t.split(':').reduce((a, n) => a * 60 + +n, 0);
+  function md(text) {
+    const inline = s => esc(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[(\d{1,2}(?::\d{2}){1,2})\]/g, (_, t) => `<button class="ts" data-s="${toSec(t)}" title="Ir a ${t}">${t}</button>`);
+    let html = '', list = false;
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      const item = /^([-*•]|\d+[.)])\s+(.*)$/.exec(line);
+      if (item) { if (!list) { html += '<ul>'; list = true; } html += `<li>${inline(item[2])}</li>`; continue; }
+      if (list) { html += '</ul>'; list = false; }
+      if (line) html += `<p>${inline(line.replace(/^#+\s*/, ''))}</p>`;
+    }
+    return html + (list ? '</ul>' : '');
+  }
+  function add(kind, html) {
+    $('empty').hidden = true;
+    const el = document.createElement('div');
+    el.className = 'msg ' + kind; el.innerHTML = html;
+    $('log').append(el); $('log').scrollTop = $('log').scrollHeight;
+    return el;
+  }
+  $('log').onclick = e => { const b = e.target.closest('.ts'); if (b) nova.cmd('seek', +b.dataset.s); };
+
+  async function ask(prompt, shown) {
+    if (busy) return;
+    if (!engine) return add('note', 'La IA aún se está preparando.');
+    busy = true; $('send').disabled = true;
+    add('user', esc(shown || prompt));
+    const out = add('ai cursor', '');
+    try {
+      if (convo.url !== page.url || !convo.ctx) {
+        const c = await fetchContext();
+        convo = { url: page.url, ctx: c, messages: [{ role: 'system', content: systemPrompt(c) }] };
+        if (c.kind === 'video' && !c.transcript) add('note', 'Este video no tiene subtítulos: respondo con su título y descripción.');
+      }
+      convo.messages.push({ role: 'user', content: prompt });
+      abort = new AbortController();
+      let acc = '';
+      await generate(convo.messages, t => { acc += t; out.innerHTML = md(acc); $('log').scrollTop = $('log').scrollHeight; }, abort.signal);
+      convo.messages.push({ role: 'assistant', content: acc });
+      if (!acc.trim()) out.innerHTML = '<p>No obtuve respuesta. Intenta de nuevo.</p>';
+    } catch (e) {
+      out.className = 'msg err'; out.textContent = 'Error: ' + (e.message || e);
+      convo.messages.pop();
+    } finally {
+      out.classList.remove('cursor'); busy = false; $('send').disabled = false; abort = null;
+    }
+  }
+
+  const SUMMARY = {
+    video: 'Resume el video: primero una frase en negrita con la idea central y luego entre 5 y 8 puntos clave. Empieza cada punto con la marca de tiempo entre corchetes donde se trata ese tema, por ejemplo [12:34].',
+    page: 'Resume esta página: primero una frase en negrita con la idea central y luego 5 puntos clave.',
+  };
+  function updateQuick() {
+    $('sum').textContent = page.video ? 'Resumir este video' : 'Resumir esta página';
+    $('quick').hidden = !engine || !page.url;
+    $('q').placeholder = page.video ? 'Pregúntale a este video…' : page.url ? 'Pregúntale a esta página…' : 'Pregunta lo que quieras…';
+  }
+  $('sum').onclick = () => ask(page.video ? SUMMARY.video : SUMMARY.page, $('sum').textContent);
+  $('keys').onclick = () => ask('Explícame el contenido de forma muy simple, como para alguien que no sabe nada del tema, en 4 o 5 frases.', 'Explícalo simple');
+
+  $('ask').onsubmit = e => { e.preventDefault(); const v = $('q').value.trim(); if (v) { $('q').value = ''; $('q').style.height = ''; ask(v); } };
+  $('q').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('ask').requestSubmit(); } if (e.key === 'Escape' && abort) abort.abort(); };
+  $('q').oninput = () => { $('q').style.height = ''; $('q').style.height = $('q').scrollHeight + 'px'; };
+  $('close').onclick = () => nova.cmd('ai');
+
+  nova.on('ai-page', p => {
+    if (p.url !== page.url) { page = p; updateQuick(); }
+  });
+  nova.cmd('aiStatus');
+</script>
+</body>
+</html>
