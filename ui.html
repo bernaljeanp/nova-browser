@@ -218,6 +218,11 @@
   const fmt = n => n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : n.toLocaleString('es');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const x = '<svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+  const LENS_ICONS = {
+    recipe: '<svg viewBox="0 0 24 24"><path d="M6 13.9A4 4 0 1 1 9 7a5 5 0 0 1 6 0 4 4 0 1 1 3 6.9V20H6z"/><path d="M6 17h12"/></svg>',
+    video: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg>',
+    product: '<svg viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0M9.5 13l2 2 3.5-3.5"/></svg>',
+  };
   const MASK = '<svg viewBox="0 0 24 24"><path d="M3 10c2-2 5-3 9-3s7 1 9 3c0 4-2 7-5 7-2 0-3-2-4-2s-2 2-4 2c-3 0-5-3-5-7z"/><path d="M8 11.5h.01M16 11.5h.01"/></svg>';
   const SOUND = '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
   const MUTED = '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>';
@@ -460,6 +465,10 @@
     $('yt').hidden = !s.youtube;
     $('lensbtn').hidden = !s.lens;
     $('lensbtn').classList.toggle('on', !!s.lensOpen);
+    if (s.lens && $('lensbtn').dataset.kind !== s.lensKind) {
+      $('lensbtn').dataset.kind = s.lensKind;
+      $('lensbtn').innerHTML = (LENS_ICONS[s.lensKind] || LENS_ICONS.recipe) + `<span>${esc(s.lens)}</span>`;
+    }
     $('ai').classList.toggle('on', !!s.aiOpen);
     $('mini').hidden = !s.media;
     if (s.media) {

@@ -101,9 +101,26 @@
     $('setup').hidden = !title;
     $('stitle').textContent = title || ''; $('sbody').textContent = body || '';
     $('sbtn').hidden = !btn; $('sbtn').textContent = btn || ''; $('sbtn').onclick = onClick || null;
+    if (btn) { engState = 'needs'; flushJobs(); } // the user must act (activate, retry, install): lenses fall back
   };
   const progress = (p, text) => { $('prog').hidden = false; $('pbar').style.width = Math.round((p || 0) * 100) + '%'; $('ptext').textContent = text || ''; };
-  const ready = () => { setup(); $('prog').hidden = true; $('quick').hidden = false; updateQuick(); };
+  const ready = () => { setup(); $('prog').hidden = true; $('quick').hidden = false; updateQuick(); engState = 'ready'; flushJobs(); };
+
+  // Lens jobs: other Nova pages borrow this engine. One generation at a time (WebLLM can't run two),
+  // queued while the engine is still loading; answered with 'noengine' when it needs the user.
+  let engState = 'pending', chain = Promise.resolve();
+  const jobs = [];
+  const runJob = j => generate(j.messages, t => nova.cmd('aiJob', { id: j.id, t }), new AbortController().signal)
+    .then(() => nova.cmd('aiJob', { id: j.id, done: true }), e => nova.cmd('aiJob', { id: j.id, error: String(e.message || e) }));
+  function flushJobs() {
+    if (engState === 'pending') return;
+    while (jobs.length) {
+      const j = jobs.shift();
+      if (engState === 'ready') chain = chain.then(() => runJob(j));
+      else nova.cmd('aiJob', { id: j.id, error: 'noengine' });
+    }
+  }
+  nova.on('ai-job', j => { jobs.push(j); flushJobs(); });
 
   nova.on('ai-status', async s => {
     if (s.ollama.length) {

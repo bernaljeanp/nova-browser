@@ -64,12 +64,50 @@
   .tmr button { width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
   .done-card { text-align: center; }
   .done-card .txt { font-size: 38px; font-weight: 700; }
-  @media (max-width: 760px) { .app { grid-template-columns: 1fr; } aside { display: none; } }
+  /* Video and Producto lenses */
+  .gen { height: 100%; display: grid; grid-template-columns: minmax(300px, 400px) 1fr; }
+  .gside { overflow-y: auto; background: var(--surface); border-right: 1px solid var(--line); padding: 22px; }
+  .gside .pic { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 14px; background: var(--surface-2); }
+  .gside .pic.sq { aspect-ratio: 1; object-fit: contain; background: #fff; }
+  .gside h1 { font-size: 20px; margin-top: 16px; }
+  .sub { margin-top: 6px; color: var(--muted); font-size: 14px; }
+  .price { margin-top: 16px; font-size: 34px; font-weight: 750; letter-spacing: -.02em; }
+  .stars { margin-top: 8px; color: var(--warn); font-size: 15px; }
+  .stars span { color: var(--muted); }
+  .chap { margin-top: 22px; }
+  .chap h2, .gmain h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; }
+  .row { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 8px; border-radius: 9px; text-align: left; font-size: 14px; }
+  .row:hover { background: var(--surface-2); }
+  .ts { flex: none; padding: 1px 7px; border-radius: 6px; background: #2fd4c71f; color: var(--accent-2); font: 600 12.5px var(--mono); }
+  .gmain { position: relative; overflow-y: auto; padding: 26px clamp(20px, 5vw, 64px); }
+  .gtop { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+  .gtop .close { margin-left: auto; }
+  .lead { font-size: clamp(20px, 2.2vw, 28px); line-height: 1.45; font-weight: 600; max-width: 860px; }
+  .cards { display: grid; gap: 12px; margin-top: 24px; max-width: 860px; }
+  .idea { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: baseline; width: 100%; padding: 16px 18px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--line); text-align: left; animation: in .3s ease-out; transition: border-color .15s; }
+  .idea:hover { border-color: var(--accent-2); }
+  .idea b { font-size: 16.5px; }
+  .idea p { grid-column: 2; color: #c3c6db; font-size: 14.5px; line-height: 1.5; }
+  .verdict { padding: 22px 24px; border-radius: 16px; background: linear-gradient(135deg, #2a2160, #13151d 70%); border: 1px solid #3a3470; max-width: 860px; }
+  .verdict small { color: #b9b0ff; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 12px; }
+  .verdict p { margin-top: 8px; font-size: 22px; line-height: 1.4; font-weight: 600; }
+  .for { margin-top: 14px; color: #c3c6db; font-size: 15px; max-width: 860px; }
+  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; max-width: 860px; }
+  .pc ul { list-style: none; padding: 0; display: grid; gap: 10px; }
+  .pc li { padding: 12px 14px 12px 40px; position: relative; border-radius: 12px; background: var(--surface); font-size: 14.5px; line-height: 1.45; animation: in .3s ease-out; }
+  .pc li::before { position: absolute; left: 14px; top: 11px; font-weight: 800; }
+  .pros li::before { content: "+"; color: #4ade80; }
+  .cons li::before { content: "−"; color: #fb7185; }
+  .note { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: var(--surface); color: var(--muted); font-size: 14px; max-width: 860px; }
+  .wait { color: var(--muted); }
+  .wait::after { content: "…"; }
+  @media (max-width: 760px) { .app, .gen { grid-template-columns: 1fr; } aside, .gside { display: none; } .pc { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { body { animation: none; } }
 </style>
 </head>
 <body>
-  <div class="app">
+  <div class="app" id="recipe">
     <aside>
       <div class="hero" id="hero"></div>
       <div class="head">
@@ -92,6 +130,7 @@
       <p class="hint">Flechas o barra espaciadora para avanzar · la pantalla no se apagará mientras cocinas</p>
     </main>
   </div>
+  <div class="gen" id="gen" hidden></div>
 <script>
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -152,11 +191,105 @@
   $('more').onclick = () => { srv++; $('srv').textContent = srv; drawIngredients(); };
   addEventListener('keydown', e => {
     if (e.key === 'Escape') nova.cmd('lensClose');
+    else if (KIND !== 'recipe') return;
     else if (e.key === 'ArrowRight' || (e.key === ' ' && e.target === document.body)) { e.preventDefault(); $('next').click(); }
     else if (e.key === 'ArrowLeft') go(-1);
   });
 
-  nova.on('lens-data', ({ data }) => {
+  // ---------- AI: jobs run on the Nova IA engine; answers stream back as KIND|field|field lines ----------
+  let KIND = 'recipe', jobSeq = 0;
+  const onAI = {};
+  nova.on('lens-ai', m => onAI[m.id]?.(m));
+  function askAI(system, user, onLine, onEnd) {
+    const id = `lens-${Date.now()}-${++jobSeq}`;
+    let buf = '';
+    onAI[id] = m => {
+      if (m.t) { buf += m.t; let nl; while ((nl = buf.indexOf('\n')) >= 0) { onLine(buf.slice(0, nl).trim()); buf = buf.slice(nl + 1); } }
+      if (m.done || m.error) { if (buf.trim()) onLine(buf.trim()); delete onAI[id]; onEnd(m.error); }
+    };
+    nova.cmd('lensAI', { id, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
+  }
+  const parts = line => line.replace(/^[-*•\s]+/, '').split('|').map(s => s.trim());
+  const cut = (s, n) => s && s.length > n ? s.slice(0, n) + '\n[…]' : (s || '');
+  const toSec = t => t.split(':').reduce((a, n) => a * 60 + +n, 0);
+  const noAI = err => `<div class="note">${err === 'noengine'
+    ? 'Para esta parte, activa Nova IA una vez: abre el panel con <b>Ctrl+J</b>. Corre en tu equipo, gratis y privado.'
+    : 'No se pudo generar con la IA: ' + esc(err)}</div>`;
+  const closeBtn = label => `<button class="close" onclick="nova.cmd('lensClose')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>${label}</button>`;
+  $('gen').onclick = e => { const b = e.target.closest('[data-s]'); if (b) nova.cmd('seek', +b.dataset.s); };
+
+  function renderVideo(v) {
+    const chapters = [...(v.description || '').matchAll(/^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—:]?\s*(.+)$/gm)].slice(0, 30);
+    $('gen').innerHTML = `
+      <aside class="gside">
+        <img class="pic" src="https://i.ytimg.com/vi/${encodeURIComponent(v.id || '')}/hqdefault.jpg" alt="">
+        <h1>${esc(v.title || 'Video')}</h1><p class="sub">${esc(v.channel || '')}</p>
+        ${chapters.length ? `<div class="chap"><h2>Capítulos</h2>${chapters.map(c => `<button class="row" data-s="${toSec(c[1])}"><span class="ts">${esc(c[1])}</span>${esc(c[2])}</button>`).join('')}</div>` : ''}
+      </aside>
+      <section class="gmain">
+        <div class="gtop"><span class="tag">Lente · Video en 1 minuto</span>${closeBtn('Volver al video')}</div>
+        <h2>En 1 minuto</h2>
+        <p class="lead wait" id="sum">Nova está viendo el video por ti</p>
+        <div class="cards" id="ideas"></div><div id="vnote"></div>
+      </section>`;
+    const src = v.transcript ? `Transcripción con marcas de tiempo:\n${cut(v.transcript, 14000)}` : `El video no tiene subtítulos. Descripción:\n${cut(v.description, 6000)}`;
+    askAI('Eres Nova IA. Responde solo en español y solo con líneas en este formato exacto, sin texto adicional:\nRESUMEN|una frase clara que explique de qué trata el video\nIDEA|m:ss|título corto|una frase que lo explique\nEscribe entre 5 y 8 líneas IDEA en orden, usando marcas de tiempo reales de la transcripción.',
+      `Video: ${v.title}\nCanal: ${v.channel}\n\n${src}`,
+      line => {
+        const [k, a, b, c] = parts(line);
+        if (/^RESUMEN$/i.test(k) && a) { $('sum').classList.remove('wait'); $('sum').textContent = a; }
+        if (/^IDEA$/i.test(k) && b) {
+          const ts = /^\d{1,2}(:\d{2}){1,2}$/.test(a) ? a : '';
+          $('ideas').insertAdjacentHTML('beforeend', `<button class="idea" ${ts ? `data-s="${toSec(ts)}"` : ''}>${ts ? `<span class="ts">${esc(ts)}</span>` : '<span></span>'}<b>${esc(b)}</b>${c ? `<p>${esc(c)}</p>` : ''}</button>`);
+        }
+      },
+      err => {
+        if ($('sum').classList.contains('wait')) { $('sum').classList.remove('wait'); $('sum').textContent = err ? (chapters.length ? 'Usa los capítulos para saltar a lo que te interesa.' : 'Este video aún no tiene resumen.') : ''; }
+        $('vnote').innerHTML = err ? noAI(err) : v.transcript ? '' : '<div class="note">Este video no tiene subtítulos: el resumen se basa en su descripción.</div>';
+      });
+  }
+
+  function renderProduct(p) {
+    const price = p.price ? (() => { try { return new Intl.NumberFormat('es', { style: 'currency', currency: p.currency || 'USD', maximumFractionDigits: 0 }).format(+p.price); } catch (e) { return p.price + ' ' + p.currency; } })() : '';
+    const stars = p.rating ? '★'.repeat(Math.round(p.rating)) + '☆'.repeat(5 - Math.round(p.rating)) : '';
+    const avail = /InStock/i.test(p.availability) ? 'Disponible' : /OutOfStock/i.test(p.availability) ? 'Agotado' : '';
+    $('gen').innerHTML = `
+      <aside class="gside">
+        ${p.image ? `<img class="pic sq" src="${esc(p.image)}" alt="">` : ''}
+        <h1>${esc(p.name)}</h1>${p.brand ? `<p class="sub">${esc(p.brand)}</p>` : ''}
+        ${price ? `<p class="price">${esc(price)}</p>` : ''}
+        ${stars ? `<p class="stars">${stars} <span>${p.rating.toLocaleString('es')}${p.count ? ` · ${p.count.toLocaleString('es')} opiniones` : ''}</span></p>` : ''}
+        ${avail ? `<p class="sub">${avail}</p>` : ''}
+      </aside>
+      <section class="gmain">
+        <div class="gtop"><span class="tag">Lente · Decidir compra</span>${closeBtn('Volver a la tienda')}</div>
+        <div class="verdict"><small>Veredicto de Nova</small><p class="wait" id="ver">Nova está leyendo la página y las opiniones</p></div>
+        <p class="for" id="for"></p>
+        <div class="pc"><div><h2>A favor</h2><ul class="pros" id="pros"></ul></div><div><h2>En contra</h2><ul class="cons" id="cons"></ul></div></div>
+        <div id="pnote"></div>
+      </section>`;
+    askAI('Eres Nova IA, un asesor de compras honesto. Responde solo en español y solo con líneas en este formato exacto, sin texto adicional:\nVEREDICTO|una frase: si vale la pena y por qué\nPARA|para quién es ideal, en una frase\nPRO|un punto a favor concreto (escribe 3)\nCONTRA|un punto en contra concreto (escribe 3)\nBasate en la información y opiniones de la página; si algo no está, no lo inventes.',
+      `Producto: ${p.name}\nMarca: ${p.brand}\nPrecio: ${price}\nValoración: ${p.rating || 'sin datos'} (${p.count || 0} opiniones)\nDescripción: ${p.description}\n\nTexto de la página (incluye opiniones):\n${cut(p.text, 12000)}`,
+      line => {
+        const [k, a] = parts(line);
+        if (!a) return;
+        if (/^VEREDICTO$/i.test(k)) { $('ver').classList.remove('wait'); $('ver').textContent = a; }
+        if (/^PARA$/i.test(k)) $('for').textContent = 'Ideal para: ' + a;
+        if (/^PRO$/i.test(k)) $('pros').insertAdjacentHTML('beforeend', `<li>${esc(a)}</li>`);
+        if (/^CONTRA$/i.test(k)) $('cons').insertAdjacentHTML('beforeend', `<li>${esc(a)}</li>`);
+      },
+      err => {
+        if ($('ver').classList.contains('wait')) { $('ver').classList.remove('wait'); $('ver').textContent = err ? 'Sin veredicto todavía.' : 'Revisa los puntos a favor y en contra.'; }
+        $('pnote').innerHTML = err ? noAI(err) : '';
+      });
+  }
+
+  nova.on('lens-data', ({ kind, data }) => {
+    KIND = kind;
+    $('recipe').hidden = kind !== 'recipe';
+    $('gen').hidden = kind === 'recipe';
+    if (kind === 'video') return renderVideo(data);
+    if (kind === 'product') return renderProduct(data);
     R = data; i = 0;
     $('hero').style.backgroundImage = R.image ? `url("${R.image.replace(/"/g, '%22')}")` : '';
     $('title').textContent = R.title;

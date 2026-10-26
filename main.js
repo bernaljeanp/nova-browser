@@ -76,7 +76,16 @@ const LENS_DETECT = `(() => {
   const all = [];
   const walk = o => { if (!o || typeof o !== 'object') return; if (Array.isArray(o)) return o.forEach(walk); all.push(o); if (o['@graph']) walk(o['@graph']); };
   for (const s of document.querySelectorAll('script[type="application/ld+json"]')) { try { walk(JSON.parse(s.textContent)); } catch (e) {} }
-  const r = all.find(o => [].concat(o['@type'] || []).includes('Recipe'));
+  const is = t => o => [].concat(o['@type'] || []).includes(t);
+  const p = all.find(is('Product'));
+  if (p && !all.some(is('Recipe'))) {
+    const txt = v => String(typeof v === 'string' ? v : (v && (v.text || v.name)) || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+    const offer = [].concat(p.offers || [])[0] || {}, rating = p.aggregateRating || {}, img = [].concat(p.image || [])[0];
+    return { kind: 'product', data: { name: txt(p.name) || document.title, brand: txt(p.brand), description: txt(p.description).slice(0, 600),
+      image: typeof img === 'string' ? img : img && img.url || '', price: offer.price || offer.lowPrice || '', currency: offer.priceCurrency || '',
+      availability: String(offer.availability || '').split('/').pop(), rating: +rating.ratingValue || 0, count: +(rating.reviewCount || rating.ratingCount) || 0 } };
+  }
+  const r = all.find(is('Recipe'));
   if (!r) return null;
   const txt = v => String(typeof v === 'string' ? v : (v && (v.text || v.name)) || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
   const steps = [];
@@ -91,14 +100,22 @@ const LENS_DETECT = `(() => {
   const img = [].concat(r.image || [])[0];
   const ingredients = [].concat(r.recipeIngredient || []).map(txt).filter(Boolean);
   if (!ingredients.length && !steps.length) return null;
-  return { title: txt(r.name) || document.title, image: typeof img === 'string' ? img : img && img.url || '',
-    yield: txt([].concat(r.recipeYield || [])[0]), time: r.totalTime || r.cookTime || r.prepTime || '', ingredients, steps, url: location.href };
+  return { kind: 'recipe', data: { title: txt(r.name) || document.title, image: typeof img === 'string' ? img : img && img.url || '',
+    yield: txt([].concat(r.recipeYield || [])[0]), time: r.totalTime || r.cookTime || r.prepTime || '', ingredients, steps, url: location.href } };
 })()`;
 
-function openLens() {
-  const t = tabs.get(active);
-  if (!t?.lens) return toast('Esta página no tiene un lente disponible');
-  const send = () => lensView.webContents.send('lens-data', { kind: 'recipe', data: t.lens });
+const LENS_LABELS = { recipe: 'Modo cocina', video: 'Video en 1 minuto', product: 'Decidir compra' };
+// YouTube is a single-page app, so its lens comes from the URL rather than from page markup.
+const lensKind = t => t?.lens?.kind || (t?.view && isYouTube(t.view.webContents.getURL()) && /[?&]v=/.test(t.view.webContents.getURL()) ? 'video' : null);
+
+async function openLens() {
+  const t = tabs.get(active), kind = lensKind(t);
+  if (!kind) return toast('Esta página no tiene un lente disponible');
+  const w = t.view.webContents;
+  let data = t.lens?.data;
+  if (kind === 'video') { aiTab = active; data = { ...(await w.executeJavaScript(TRANSCRIPT).catch(() => ({}))), id: new URL(w.getURL()).searchParams.get('v') }; }
+  if (kind === 'product') data = { ...data, text: (await w.executeJavaScript(PAGE_TEXT).catch(() => ({}))).text || '' };
+  const send = () => lensView.webContents.send('lens-data', { kind, data });
   if (!lensView) {
     lensView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js') } });
     lensView.setBackgroundColor('#0a0b10');
@@ -158,7 +175,7 @@ function state() {
   const media = m && { id: m[0], title: m[1].view.webContents.getTitle(), playing: m[1].media === 'playing', yt: isYouTube(m[1].view.webContents.getURL()) };
   ui.webContents.send('state', { tabs: list, active, split, blocked, canBack: !!nav?.canGoBack(), canFwd: !!nav?.canGoForward(),
     youtube: isYouTube(curUrl), yt: settings, ytLabels: YT_LABELS, media, aiOpen,
-    bookmarked: bookmarks.some(b => b.url === curUrl), lens: !!cur?.lens, lensOpen });
+    bookmarked: bookmarks.some(b => b.url === curUrl), lens: LENS_LABELS[lensKind(cur)] || '', lensKind: lensKind(cur), lensOpen });
   aiView?.webContents.send('ai-page', { url: curUrl === HOME ? '' : curUrl, title: cur ? info(cur).title : '', video: isYouTube(curUrl) && /[?&]v=/.test(curUrl) });
 }
 
@@ -937,7 +954,11 @@ const cmd = {
   lens: () => lensOpen ? closeLens() : openLens(),
   lensClose: () => closeLens(),
   // Lens AI jobs run on the AI panel's engine (one model in GPU memory), even while the panel is closed.
-  lensAI: job => { lensJobs.add(job.id); ensureAiView().webContents.send('ai-job', job); },
+  lensAI: job => {
+    lensJobs.add(job.id);
+    const w = ensureAiView().webContents; // a message sent before ai.html finishes loading would be lost
+    w.isLoading() ? w.once('did-finish-load', () => w.send('ai-job', job)) : w.send('ai-job', job);
+  },
   aiJob: msg => { if (lensJobs.has(msg.id)) { lensView?.webContents.send('lens-ai', msg); if (msg.done || msg.error) lensJobs.delete(msg.id); } },
   aiStatus: async () => aiView?.webContents.send('ai-status', { ollama: await ensureOllama() }),
   aiContext: async () => {
